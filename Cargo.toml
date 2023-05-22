@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.2.7", features = ["derive"] }
 configparser = "3.0.2"
+hex = "0.4.3"
+sha1 = "0.10.5"

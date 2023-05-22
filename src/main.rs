@@ -1,7 +1,10 @@
+use clap::Args;
 use clap::{Parser, Subcommand};
 use std::path::Path;
 use std::env;
+use std::fs;
 use configparser::ini::Ini;
+use sha1::{Sha1, Digest};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -13,14 +16,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Init { path: Option<String> },  // TODO: Make optional and default to cwd
+    Init { path: Option<String> },
+    HashObject(HashObjectArgs) 
+}
+
+#[derive(Args)]
+struct HashObjectArgs {
+    path: String,
+    #[arg(short, long, default_value_t = String::from("blob"))]
+    r#type: String,
 }
 
 fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Init { path } => cmd_init(path)
+        Commands::Init { path } => cmd_init(path),
+        Commands::HashObject(args) => cmd_hash_object(args)
     }
 }
 
@@ -48,7 +60,31 @@ fn cmd_init(path: Option<String>) {
         grit_err("Failed to write config", Some(e));
     });
 
+    // Create objects directory
+    let objects_path = gitdir.join("objects");
+    std::fs::create_dir(&objects_path).unwrap_or_else(|e| {
+        grit_err("Failed to create file {objects_path}", Some(e));
+    });
+
     println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
+}
+
+fn cmd_hash_object(args: HashObjectArgs) {
+    let mut hasher: Sha1 = Sha1::new();
+
+    // Read the file at the given path
+    let Ok(content_bytes) = fs::read(args.path) else { panic!() };
+
+    // Prepend header: the file type and size
+    let header_str = args.r#type + " " + &content_bytes.len().to_string() + "\0";
+    let header_bytes = header_str.as_bytes();
+
+    let bytes = [header_bytes, &content_bytes].concat();
+
+    hasher.update(bytes);
+    let hash = hasher.finalize();
+    let hash_str = hex::encode(hash);
+    println!("{}", hash_str);
 }
 
 
@@ -66,5 +102,5 @@ fn grit_err<E: std::error::Error>(text: &str, inner_err: Option<E>) {
     if let Some(e) = inner_err {
         println!("{e}");
     }
-    std::process::exit(1);
+    panic!()
 } 
