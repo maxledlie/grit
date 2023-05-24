@@ -1,10 +1,14 @@
 use clap::Args;
-use clap::{Parser, Subcommand};
-use std::path::Path;
+use clap::{Parser, Subcommand, ValueEnum};
+use flate2::Compression;
+use flate2::bufread::ZlibDecoder;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::env;
-use std::fs;
+use std::fs::{self, File};
 use configparser::ini::Ini;
 use sha1::{Sha1, Digest};
+use flate2::write::ZlibEncoder;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -17,7 +21,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Init { path: Option<String> },
-    HashObject(HashObjectArgs) 
+    HashObject(HashObjectArgs),
+    CatFile(CatFileArgs)
 }
 
 #[derive(Args)]
@@ -25,6 +30,23 @@ struct HashObjectArgs {
     path: String,
     #[arg(short, long, default_value_t = String::from("blob"))]
     r#type: String,
+    #[arg(short)]
+    write: bool,
+}
+
+#[derive(Args)]
+struct CatFileArgs {
+    #[arg(value_enum)]
+    r#type: ObjectType,
+    object: String
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, ValueEnum)]
+enum ObjectType {
+    Blob,
+    Tree,
+    Commit,
+    Tag
 }
 
 fn main() {
@@ -32,7 +54,8 @@ fn main() {
 
     match args.command {
         Commands::Init { path } => cmd_init(path),
-        Commands::HashObject(args) => cmd_hash_object(args)
+        Commands::HashObject(args) => cmd_hash_object(args),
+        Commands::CatFile(args) => cmd_cat_file(args)
     }
 }
 
@@ -44,7 +67,7 @@ fn cmd_init(path: Option<String>) {
             Path::new("").to_path_buf()
         }));
 
-    let gitdir = worktree.join(".git"); 
+    let gitdir = worktree.join(".grit"); 
 
     // Create the folder if it does not exist
     if !gitdir.exists() {
@@ -73,7 +96,7 @@ fn cmd_hash_object(args: HashObjectArgs) {
     let mut hasher: Sha1 = Sha1::new();
 
     // Read the file at the given path
-    let Ok(content_bytes) = fs::read(args.path) else { panic!() };
+    let Ok(content_bytes) = fs::read(&args.path) else { panic!() };
 
     // Prepend header: the file type and size
     let header_str = args.r#type + " " + &content_bytes.len().to_string() + "\0";
@@ -82,11 +105,73 @@ fn cmd_hash_object(args: HashObjectArgs) {
     let bytes = [header_bytes, &content_bytes].concat();
 
     hasher.update(bytes);
-    let hash = hasher.finalize();
-    let hash_str = hex::encode(hash);
+    let hash_bytes = hasher.finalize();
+    let hash_str = hex::encode(hash_bytes);
     println!("{}", hash_str);
+
+    if !args.write {
+        return;
+    }
+
+    let path = env::current_dir().unwrap_or_else(|_| { panic!() });
+    let root = repo_find(&path).unwrap_or_else(|| {
+        panic!("fatal: not a grit repository");
+    });
+
+    // Compress the file contents
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&content_bytes).unwrap_or_else(|e| {
+        panic!("Compression of object failed: {e}");
+    });
+
+    let compressed_bytes = encoder.finish().unwrap_or_else(|e| {
+        panic!("Compression of object failed: {e}");
+    });
+
+    // The first two characters of the SHA1 hash are used to name a directory. The remaining 14 name the file within
+    // that directory. This is just for practical reasons, because most operating systems slow down on directories
+    // with loads of files.
+    let dir_name = &hash_str[..2];
+    let file_name = &hash_str[2..];
+
+    let dir = root.join(format!(".grit/objects/{}", dir_name));
+    let result = fs::create_dir_all(&dir).and_then(|()| {
+        File::create(dir.join(file_name))
+    }).and_then(|mut f| {
+        f.write_all(&compressed_bytes)
+    });
+
+    if let Err(e) = result {
+        println!("Failed to write compressed file: {e}");
+    }
 }
 
+fn cmd_cat_file(args: CatFileArgs) {
+    let path = env::current_dir().unwrap_or_else(|_| { panic!() });
+    let root = repo_find(&path).unwrap_or_else(|| {
+        panic!("fatal: not a grit repository");
+    });
+
+    if args.object.len() < 3 {
+        println!("fatal: Not a valid object name {}", args.object);
+        return
+    }
+
+    let full_path = root.join(format!(".grit/objects/{}/{}", &args.object[..2], &args.object[2..]));
+    if !full_path.exists() {
+        println!("fatal: Not a valid object name {}", args.object);
+    }
+
+    // Read and decompress the requested file
+    let contents = fs::read(full_path).and_then(|bytes| {
+        let mut z = ZlibDecoder::new(&bytes[..]);
+        let mut s = String::new();
+        z.read_to_string(&mut s)?;
+        Ok(s)
+    }).unwrap();
+
+    println!("{}", contents);
+}
 
 fn repo_default_config() -> Ini {
     let mut config = Ini::new();
@@ -104,3 +189,18 @@ fn grit_err<E: std::error::Error>(text: &str, inner_err: Option<E>) {
     }
     panic!()
 } 
+
+
+// Returns the path to the root of the repository at the given path.
+fn repo_find(path: &Path) -> Option<PathBuf> {
+    if path.join(".grit").exists() {
+        return Some(path.to_path_buf());
+    }
+
+    let parent = path.parent();
+    if parent == None || parent == Some(Path::new("")) {
+        return None
+    }
+
+    repo_find(parent.unwrap())
+}
