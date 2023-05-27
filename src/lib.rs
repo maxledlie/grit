@@ -14,16 +14,25 @@ use flate2::write::ZlibEncoder;
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {
-    #[command(subcommand)]
-    pub command: Commands,
+    #[clap(flatten)]
+    pub global_opts: GlobalOpts,
+
+    #[clap(subcommand)]
+    pub command: Command,
 }
 
 #[derive(Subcommand)]
-pub enum Commands {
+pub enum Command {
     Init { path: Option<String> },
     HashObject(HashObjectArgs),
     CatFile(CatFileArgs),
     Log(LogArgs)
+}
+
+#[derive(Args)]
+pub struct GlobalOpts {
+    #[arg(short, long, global = true)]
+    git_mode: bool
 }
 
 #[derive(Args)]
@@ -33,8 +42,6 @@ pub struct HashObjectArgs {
     r#type: String,
     #[arg(short)]
     write: bool,
-    #[arg(short, long)]
-    git_mode: bool
 }
 
 #[derive(Args)]
@@ -42,8 +49,6 @@ pub struct CatFileArgs {
     #[arg(value_enum)]
     r#type: ObjectType,
     object: String,
-    #[arg(short, long)]
-    git_mode: bool
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, ValueEnum)]
@@ -57,11 +62,9 @@ enum ObjectType {
 #[derive(Args)]
 pub struct LogArgs {
     commit_hash: String,
-    #[arg(short, long)]
-    git_mode: bool
 }
 
-pub fn cmd_init(path: Option<String>) {
+pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) {
     let worktree = path
         .map(|p| Path::new(&p).to_path_buf())
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|e| {
@@ -94,7 +97,7 @@ pub fn cmd_init(path: Option<String>) {
     println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
 }
 
-pub fn cmd_hash_object(args: HashObjectArgs) {
+pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) {
     let mut hasher: Sha1 = Sha1::new();
 
     // Read the file at the given path
@@ -116,7 +119,7 @@ pub fn cmd_hash_object(args: HashObjectArgs) {
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
@@ -148,26 +151,26 @@ pub fn cmd_hash_object(args: HashObjectArgs) {
     }
 }
 
-pub fn cmd_cat_file(args: CatFileArgs) {
+pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(contents) = read_object(&root, &args.object, args.git_mode) {
+    if let Some(contents) = read_object(&root, &args.object, global_opts.git_mode) {
         println!("{}", contents);
     } else {
         println!("fatal: Not a valid object name {}", args.object);
     }
 }
 
-pub fn cmd_log(args: LogArgs) {
+pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(commit_text) = read_object(&root, &args.commit_hash, args.git_mode) {
+    if let Some(commit_text) = read_object(&root, &args.commit_hash, global_opts.git_mode) {
         println!("{}", commit_text);
     } else {
         println!("fatal: Not a valid object name {}", args.commit_hash)
