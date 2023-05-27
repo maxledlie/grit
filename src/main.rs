@@ -22,7 +22,8 @@ struct Cli {
 enum Commands {
     Init { path: Option<String> },
     HashObject(HashObjectArgs),
-    CatFile(CatFileArgs)
+    CatFile(CatFileArgs),
+    Log(LogArgs)
 }
 
 #[derive(Args)]
@@ -32,13 +33,17 @@ struct HashObjectArgs {
     r#type: String,
     #[arg(short)]
     write: bool,
+    #[arg(short, long)]
+    git_mode: bool
 }
 
 #[derive(Args)]
 struct CatFileArgs {
     #[arg(value_enum)]
     r#type: ObjectType,
-    object: String
+    object: String,
+    #[arg(short, long)]
+    git_mode: bool
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, ValueEnum)]
@@ -49,13 +54,21 @@ enum ObjectType {
     Tag
 }
 
+#[derive(Args)]
+struct LogArgs {
+    commit_hash: String,
+    #[arg(short, long)]
+    git_mode: bool
+}
+
 fn main() {
     let args = Cli::parse();
 
     match args.command {
         Commands::Init { path } => cmd_init(path),
         Commands::HashObject(args) => cmd_hash_object(args),
-        Commands::CatFile(args) => cmd_cat_file(args)
+        Commands::CatFile(args) => cmd_cat_file(args),
+        Commands::Log(args) => cmd_log(args)
     }
 }
 
@@ -114,7 +127,7 @@ fn cmd_hash_object(args: HashObjectArgs) {
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path).unwrap_or_else(|| {
+    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
@@ -148,29 +161,28 @@ fn cmd_hash_object(args: HashObjectArgs) {
 
 fn cmd_cat_file(args: CatFileArgs) {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path).unwrap_or_else(|| {
+    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if args.object.len() < 3 {
-        println!("fatal: Not a valid object name {}", args.object);
-        return
-    }
-
-    let full_path = root.join(format!(".grit/objects/{}/{}", &args.object[..2], &args.object[2..]));
-    if !full_path.exists() {
+    if let Some(contents) = read_object(&root, &args.object, args.git_mode) {
+        println!("{}", contents);
+    } else {
         println!("fatal: Not a valid object name {}", args.object);
     }
+}
 
-    // Read and decompress the requested file
-    let contents = fs::read(full_path).and_then(|bytes| {
-        let mut z = ZlibDecoder::new(&bytes[..]);
-        let mut s = String::new();
-        z.read_to_string(&mut s)?;
-        Ok(s)
-    }).unwrap();
+fn cmd_log(args: LogArgs) {
+    let path = env::current_dir().unwrap_or_else(|_| { panic!() });
+    let root = repo_find(&path, args.git_mode).unwrap_or_else(|| {
+        panic!("fatal: not a grit repository");
+    });
 
-    println!("{}", contents);
+    if let Some(commit_text) = read_object(&root, &args.commit_hash, args.git_mode) {
+        println!("{}", commit_text);
+    } else {
+        println!("fatal: Not a valid object name {}", args.commit_hash)
+    }
 }
 
 fn repo_default_config() -> Ini {
@@ -192,8 +204,10 @@ fn grit_err<E: std::error::Error>(text: &str, inner_err: Option<E>) {
 
 
 // Returns the path to the root of the repository at the given path.
-fn repo_find(path: &Path) -> Option<PathBuf> {
-    if path.join(".grit").exists() {
+fn repo_find(path: &Path, git_mode: bool) -> Option<PathBuf> {
+    let git_dir = if git_mode { ".git" } else { ".grit" };
+
+    if path.join(git_dir).exists() {
         return Some(path.to_path_buf());
     }
 
@@ -202,5 +216,39 @@ fn repo_find(path: &Path) -> Option<PathBuf> {
         return None
     }
 
-    repo_find(parent.unwrap())
+    repo_find(parent.unwrap(), git_mode)
+}
+
+fn read_object(root: &Path, hash: &String, git_mode: bool) -> Option<String> {
+    if hash.len() < 3 {
+        return None;
+    }
+
+    let git_dir = if git_mode { ".git" } else { ".grit" };
+
+    let full_path = root.join(format!("{}/objects/{}/{}", git_dir, &hash[..2], &hash[2..]));
+    if !full_path.exists() {
+        return None;
+    }
+
+    // Read and decompress the requested file
+    if let Ok(contents) = fs::read(full_path).and_then(|bytes| {
+        let mut z = ZlibDecoder::new(&bytes[..]);
+        let mut s = String::new();
+        z.read_to_string(&mut s)?;
+        Ok(s)
+    }) {
+        return Some(contents)
+    } else {
+        return None
+    }
+}
+
+struct Commit {
+    hash: String,
+    author: String,
+    date: String,
+    message: String,
+    parent: Option<String>,
+    tree: Option<String>
 }
