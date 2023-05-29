@@ -1,14 +1,17 @@
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use flate2::Compression;
-use flate2::bufread::ZlibDecoder;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::env;
 use std::fs::{self, File};
 use configparser::ini::Ini;
 use sha1::{Sha1, Digest};
 use flate2::write::ZlibEncoder;
+
+use crate::objects::{self as obj, parse_commit};
+
+pub mod objects;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -64,7 +67,7 @@ pub struct LogArgs {
     commit_hash: String,
 }
 
-pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) {
+pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), String> {
     let worktree = path
         .map(|p| Path::new(&p).to_path_buf())
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|e| {
@@ -95,9 +98,10 @@ pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) {
     });
 
     println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
+    Ok(())
 }
 
-pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) {
+pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<(), String> {
     let mut hasher: Sha1 = Sha1::new();
 
     // Read the file at the given path
@@ -115,7 +119,7 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) {
     println!("{}", hash_str);
 
     if !args.write {
-        return;
+        return Ok(());
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
@@ -147,33 +151,45 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) {
     });
 
     if let Err(e) = result {
-        println!("Failed to write compressed file: {e}");
+        Err(format!("Failed to write compressed file: {}", e))
+    } else {
+        Ok(())
     }
 }
 
-pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) {
+pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), String>{
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(contents) = read_object(&root, &args.object, global_opts.git_mode) {
+    if let Some(contents) = obj::read_text(&root, &args.object, global_opts.git_mode) {
         println!("{}", contents);
+        return Ok(());
     } else {
-        println!("fatal: Not a valid object name {}", args.object);
+        return Err(format!("Not a valid object name {}", args.object));
     }
 }
 
-pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) {
+pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), String> {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(commit_text) = read_object(&root, &args.commit_hash, global_opts.git_mode) {
-        println!("{}", commit_text);
+    if let Some(commit_text) = obj::read_text(&root, &args.commit_hash, global_opts.git_mode) {
+        let commit = parse_commit(&commit_text)?;
+    
+        println!("commit {}", args.commit_hash);
+        println!("Author: {}", commit.committer);
+        if let Some(date) = commit.date {
+            println!("Date: {}", date);
+        }
+        println!();
+        println!("\t{}", commit.message);
+        Ok(())
     } else {
-        println!("fatal: Not a valid object name {}", args.commit_hash)
+        Err(format!("Not a valid object name {}", args.commit_hash))
     }
 }
 
@@ -209,38 +225,4 @@ fn repo_find(path: &Path, git_mode: bool) -> Option<PathBuf> {
     }
 
     repo_find(parent.unwrap(), git_mode)
-}
-
-fn read_object(root: &Path, hash: &String, git_mode: bool) -> Option<String> {
-    if hash.len() < 3 {
-        return None;
-    }
-
-    let git_dir = if git_mode { ".git" } else { ".grit" };
-
-    let full_path = root.join(format!("{}/objects/{}/{}", git_dir, &hash[..2], &hash[2..]));
-    if !full_path.exists() {
-        return None;
-    }
-
-    // Read and decompress the requested file
-    if let Ok(contents) = fs::read(full_path).and_then(|bytes| {
-        let mut z = ZlibDecoder::new(&bytes[..]);
-        let mut s = String::new();
-        z.read_to_string(&mut s)?;
-        Ok(s)
-    }) {
-        return Some(contents)
-    } else {
-        return None
-    }
-}
-
-struct Commit {
-    hash: String,
-    author: String,
-    date: String,
-    message: String,
-    parent: Option<String>,
-    tree: Option<String>
 }
