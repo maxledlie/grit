@@ -1,6 +1,7 @@
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use flate2::Compression;
+use objects::Commit;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::env;
@@ -177,20 +178,30 @@ pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), String> {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(commit_text) = obj::read_text(&root, &args.commit_hash, global_opts.git_mode) {
-        let commit = parse_commit(&commit_text)?;
-    
-        println!("commit {}", args.commit_hash);
-        println!("Author: {}", commit.committer);
-        if let Some(date) = commit.date {
-            println!("Date: {}", date);
+    let mut current_hash = Some(args.commit_hash.clone());
+    while let Some(hash) = current_hash {
+        if let Some(commit_text) = obj::read_text(&root, &hash, global_opts.git_mode) {
+            let commit = parse_commit(&commit_text)?;
+            print_commit(&commit, &args.commit_hash);
+
+            // TODO: Handle multiple parents due to merges
+            current_hash = commit.parent;
+        } else {
+            return Err(format!("Not a valid object name {}", args.commit_hash))
         }
-        println!();
-        println!("\t{}", commit.message);
-        Ok(())
-    } else {
-        Err(format!("Not a valid object name {}", args.commit_hash))
     }
+    Ok(())
+}
+
+fn print_commit(commit: &Commit, hash: &String) {
+    println!("commit {}", hash);
+    println!("Author: {}", commit.committer);
+    if let Some(date) = &commit.date {
+        println!("Date: {}", date);
+    }
+    println!();
+    println!("\t{}", commit.message);
+    println!();
 }
 
 fn repo_default_config() -> Ini {
