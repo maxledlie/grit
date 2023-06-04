@@ -36,16 +36,16 @@ pub enum Command {
 #[derive(Args)]
 pub struct GlobalOpts {
     #[arg(short, long, global = true)]
-    git_mode: bool
+    pub git_mode: bool
 }
 
 #[derive(Args)]
 pub struct HashObjectArgs {
-    path: String,
+    pub path: String,
     #[arg(short, long, default_value_t = String::from("blob"))]
-    r#type: String,
+    pub r#type: String,
     #[arg(short)]
-    write: bool,
+    pub write: bool,
 }
 
 #[derive(Args)]
@@ -69,34 +69,36 @@ pub struct LogArgs {
 }
 
 pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), String> {
-    let worktree = path
+    let git_dirs: Vec<PathBuf> = vec![
+        "branches",
+        "hooks",
+        "index",
+        "info",
+        "logs",
+        "objects",
+        "refs/heads",
+        "refs/tags"
+    ].into_iter().map(|s| PathBuf::from(s)).collect();
+
+    let root = path
         .map(|p| Path::new(&p).to_path_buf())
-        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|e| {
-            grit_err("A path was not provided and the current working directory is invalid", Some(e));
-            Path::new("").to_path_buf()
-        }));
+        .unwrap_or(env::current_dir().unwrap());
 
-    let gitdir = worktree.join(".grit"); 
-
-    // Create the folder if it does not exist
-    if !gitdir.exists() {
-        std::fs::create_dir_all(&gitdir).unwrap_or_else(|e| {
-            grit_err("Directory does not exist and could not be created", Some(e));
-        });
+    let gitdir = root.join(".grit"); 
+    for p in git_dirs {
+        let path = gitdir.join(&p);
+        fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     }
 
     // Create a default config file
     let config = repo_default_config();
     let config_path = gitdir.join("config");
-    config.write(config_path).unwrap_or_else(|e| {
-        grit_err("Failed to write config", Some(e));
-    });
+    config.write(config_path).map_err(|e| e.to_string())?;
 
-    // Create objects directory
-    let objects_path = gitdir.join("objects");
-    std::fs::create_dir(&objects_path).unwrap_or_else(|e| {
-        grit_err("Failed to create file {objects_path}", Some(e));
-    });
+    // Create a HEAD file pointing to the master branch
+    let head_path = gitdir.join("HEAD");
+    let head_contents = "ref: refs/heads/master";
+    fs::write(head_path, head_contents).map_err(|e| e.to_string())?;
 
     println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
     Ok(())
@@ -212,14 +214,6 @@ fn repo_default_config() -> Ini {
 
     config
 }
-
-fn grit_err<E: std::error::Error>(text: &str, inner_err: Option<E>) {
-    println!("ERR: {text}:");
-    if let Some(e) = inner_err {
-        println!("{e}");
-    }
-    panic!()
-} 
 
 
 // Returns the path to the root of the repository at the given path.
