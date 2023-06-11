@@ -1,10 +1,19 @@
+// INTERFACE
+
+pub mod objects;
+mod checkout;
+
+pub use crate::checkout::{CheckoutArgs, cmd_checkout};
+
+// END INTERFACE
+
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use flate2::Compression;
 use objects::Commit;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::env;
+use std::{env, fmt};
 use std::fs::{self, File};
 use configparser::ini::Ini;
 use sha1::{Sha1, Digest};
@@ -12,7 +21,6 @@ use flate2::write::ZlibEncoder;
 
 use crate::objects::{self as obj, parse_commit};
 
-pub mod objects;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -30,7 +38,8 @@ pub enum Command {
     Init { path: Option<String> },
     HashObject(HashObjectArgs),
     CatFile(CatFileArgs),
-    Log(LogArgs)
+    Log(LogArgs),
+    Checkout(CheckoutArgs)
 }
 
 #[derive(Args)]
@@ -68,7 +77,21 @@ pub struct LogArgs {
     commit_hash: String,
 }
 
-pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), String> {
+pub enum CmdError {
+    IOError(std::io::Error),
+    Fatal(String)
+}
+
+impl fmt::Display for CmdError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CmdError::IOError(e) => write!(f, "fatal: {}", e.to_string()),
+            CmdError::Fatal(e) => write!(f, "fatal: {}", e)
+        }
+    }
+}
+
+pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), CmdError> {
     let git_dirs: Vec<PathBuf> = vec![
         "branches",
         "hooks",
@@ -87,24 +110,24 @@ pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), St
     let gitdir = root.join(".grit"); 
     for p in git_dirs {
         let path = gitdir.join(&p);
-        fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+        fs::create_dir_all(&path).map_err(CmdError::IOError)?;
     }
 
     // Create a default config file
     let config = repo_default_config();
     let config_path = gitdir.join("config");
-    config.write(config_path).map_err(|e| e.to_string())?;
+    config.write(config_path).map_err(CmdError::IOError)?;
 
     // Create a HEAD file pointing to the master branch
     let head_path = gitdir.join("HEAD");
     let head_contents = "ref: refs/heads/master";
-    fs::write(head_path, head_contents).map_err(|e| e.to_string())?;
+    fs::write(head_path, head_contents).map_err(CmdError::IOError)?;
 
     println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
     Ok(())
 }
 
-pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<(), String> {
+pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     let mut hasher: Sha1 = Sha1::new();
 
     // Read the file at the given path
@@ -147,34 +170,33 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
     let file_name = &hash_str[2..];
 
     let dir = root.join(format!(".grit/objects/{}", dir_name));
-    let result = fs::create_dir_all(&dir).and_then(|()| {
+
+    fs::create_dir_all(&dir).and_then(|()| {
         File::create(dir.join(file_name))
     }).and_then(|mut f| {
         f.write_all(&compressed_bytes)
-    });
+    }).map_err(CmdError::IOError)?;
 
-    if let Err(e) = result {
-        Err(format!("Failed to write compressed file: {}", e))
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
-pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), String>{
+pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), CmdError>{
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    if let Some(contents) = obj::read_text(&root, &args.object, global_opts.git_mode) {
-        println!("{}", contents);
-        return Ok(());
-    } else {
-        return Err(format!("Not a valid object name {}", args.object));
+    match obj::read_object_raw(&root, &args.object, global_opts.git_mode) {
+        Ok(Some(contents)) => {
+            println!("{}", contents);
+            Ok(())
+        },
+        Ok(None) => Err(CmdError::Fatal(format!("object {} not found in store", args.object))),
+        Err(e) => Err(e)
     }
 }
 
-pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), String> {
+pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
@@ -182,14 +204,16 @@ pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), String> {
 
     let mut current_hash = Some(args.commit_hash.clone());
     while let Some(hash) = current_hash {
-        if let Some(commit_text) = obj::read_text(&root, &hash, global_opts.git_mode) {
-            let commit = parse_commit(&commit_text)?;
-            print_commit(&commit, &args.commit_hash);
+        match obj::read_object_raw(&root, &hash, global_opts.git_mode) {
+            Ok(Some(commit_text)) => {
+                let commit = parse_commit(&commit_text)?;
+                print_commit(&commit, &args.commit_hash);
 
-            // TODO: Handle multiple parents due to merges
-            current_hash = commit.parent;
-        } else {
-            return Err(format!("Not a valid object name {}", args.commit_hash))
+                // TODO: Handle multiple parents due to merges
+                current_hash = commit.parent;
+            },
+            Ok(None) => { return Err(CmdError::Fatal(format!("object {} not found in store", args.commit_hash))); },
+            Err(e) => { return Err(e) }
         }
     }
     Ok(())

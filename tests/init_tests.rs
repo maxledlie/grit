@@ -1,34 +1,8 @@
 use std::{fs, path::PathBuf};
-use uuid::Uuid;
 
 use grit::{GlobalOpts, cmd_init};
 
-
-struct TempDir {
-    root: PathBuf
-}
-
-impl TempDir {
-    fn new(parent: &PathBuf) -> TempDir {
-        let dir_name = Uuid::new_v4().to_string();
-        let temp_dir = parent.join(&dir_name);
-        fs::create_dir_all(&temp_dir).unwrap();
-        TempDir {
-            root: PathBuf::from(temp_dir)
-        }
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.root).unwrap();
-    }
-}
-
-fn temp_dir() -> TempDir {
-    TempDir::new(&PathBuf::from("__TEST__"))
-}
-
+extern crate utils;
 
 fn repo_created(root: &PathBuf) -> bool {
     // A .grit folder should have been created with the default structure
@@ -60,7 +34,7 @@ fn repo_created(root: &PathBuf) -> bool {
 
 #[test]
 fn creates_repo_in_provided_path() {
-    let tempdir = temp_dir();
+    let tempdir = utils::testbed();
 
     let global_opts = GlobalOpts {
         git_mode: false
