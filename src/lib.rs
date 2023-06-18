@@ -10,6 +10,7 @@ pub use crate::checkout::{CheckoutArgs, cmd_checkout};
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use flate2::Compression;
+use obj::parse_hash;
 use objects::Commit;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -186,8 +187,12 @@ pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), Cm
         panic!("fatal: not a grit repository");
     });
 
-    match obj::read_object_raw(&root, &args.object, global_opts.git_mode) {
-        Ok(Some(contents)) => {
+    let hash_bytes = hex::decode(&args.object).map_err(|_| CmdError::Fatal(String::from("invalid object hash")))?;
+    let hash: [u8; 20] = hash_bytes.try_into().expect("invalid object hash");
+
+    match obj::read_object_raw(&root, &hash, global_opts.git_mode) {
+        Ok(Some(bytes)) => {
+            let contents = String::from_utf8_lossy(&bytes);
             println!("{}", contents);
             Ok(())
         },
@@ -202,10 +207,11 @@ pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
         panic!("fatal: not a grit repository");
     });
 
-    let mut current_hash = Some(args.commit_hash.clone());
+    let mut current_hash = Some(parse_hash(&args.commit_hash)?);
     while let Some(hash) = current_hash {
         match obj::read_object_raw(&root, &hash, global_opts.git_mode) {
-            Ok(Some(commit_text)) => {
+            Ok(Some(bytes)) => {
+                let commit_text = String::from_utf8_lossy(&bytes).to_string();
                 let commit = parse_commit(&commit_text)?;
                 print_commit(&commit, &args.commit_hash);
 
