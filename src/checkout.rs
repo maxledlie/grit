@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, env};
 
 use clap::Args;
 
-use crate::{GlobalOpts, repo_find, obj::{get_object, Commit, Object, GitTreeLeaf, search_object, parse_hash}, CmdError};
+use crate::{GlobalOpts, repo_find, obj::{get_object, Commit, Object, search_object, parse_hash, Tree}, CmdError};
 
 #[derive(Args)]
 pub struct CheckoutArgs {
@@ -39,14 +39,14 @@ pub fn cmd_checkout(args: CheckoutArgs, global_opts: GlobalOpts) -> Result<(), C
 
 fn checkout_commit(root: &PathBuf, commit: Commit, destination: &PathBuf, git_mode: bool) -> Result<(), CmdError> {
     match get_object(root, &commit.tree, git_mode) {
-        Ok(Object::Tree(t)) => checkout_tree(root, &t, destination, git_mode),
+        Ok(Object::Tree(t)) => checkout_tree(root, t, destination, git_mode),
         Ok(_) => Err(CmdError::Fatal(String::from("Commit references a tree that is not actually a tree"))),
         Err(e) => Err(e)
     }
 }
 
-fn checkout_tree(root: &PathBuf, tree: &Vec<GitTreeLeaf>, destination: &PathBuf, git_mode: bool) -> Result<(), CmdError> {
-    for leaf in tree.into_iter() {
+fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bool) -> Result<(), CmdError> {
+    for leaf in tree.leaves.into_iter() {
         println!("Checking out following tree node...");
         println!("{}", leaf);
 

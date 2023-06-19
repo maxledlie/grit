@@ -10,7 +10,7 @@ use crate::CmdError;
 pub enum Object {
     Blob(Vec<u8>),
     Commit(Commit),
-    Tree(Vec<GitTreeLeaf>),
+    Tree(Tree),
     Tag
 }
 
@@ -19,7 +19,7 @@ impl fmt::Display for Object {
         match self {
             Object::Blob(bytes) => write!(f, "{}", String::from_utf8_lossy(&bytes)),
             Object::Commit(c) => write!(f, "{}", c),
-            Object::Tree(t) => write!(f, "TODO: IMPL DISPLAY FOR TREE"),
+            Object::Tree(t) => write!(f, "{}", t),
             Object::Tag => write!(f, "TODO: IMPL DISPLAY FOR TAG")
         }
     }
@@ -38,16 +38,30 @@ pub struct Commit {
 
 impl fmt::Display for Commit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "tree: {}", hex::encode(&self.tree));
+        writeln!(f, "tree: {}", hex::encode(&self.tree))?;
         if let Some(parent) = &self.parent {
-            writeln!(f, "parent: {}", hex::encode(parent));
+            writeln!(f, "parent: {}", hex::encode(parent))?;
         } 
-        writeln!(f, "author: {}", &self.author);
-        writeln!(f, "committer: {}", &self.committer);
-        writeln!(f, "");
+        writeln!(f, "author: {}", &self.author)?;
+        writeln!(f, "committer: {}", &self.committer)?;
+        writeln!(f, "")?;
         writeln!(f, "{}", &self.message)
     }
 }
+
+pub struct Tree {
+    pub leaves: Vec<GitTreeLeaf>
+}
+
+impl fmt::Display for Tree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for leaf in &self.leaves {
+            writeln!(f, "{}", leaf)?;
+        }
+        Ok(())
+    }
+}
+
 
 pub struct GitTreeLeaf {
     /// The unix file mode
@@ -248,7 +262,7 @@ pub fn parse_commit(commit_text: &String) -> Result<Commit, CmdError> {
     })
 }
 
-fn parse_tree(bytes: &[u8]) -> Result<Vec<GitTreeLeaf>, CmdError> {
+fn parse_tree(bytes: &[u8]) -> Result<Tree, CmdError> {
     let mut nodes = Vec::new();
     let mut pos: usize = 0;
     let max = bytes.len();
@@ -258,7 +272,7 @@ fn parse_tree(bytes: &[u8]) -> Result<Vec<GitTreeLeaf>, CmdError> {
         nodes.push(node);
     }
 
-    Ok(nodes)
+    Ok(Tree { leaves: nodes })
 }
 
 fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf, CmdError> {
