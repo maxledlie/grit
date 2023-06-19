@@ -10,7 +10,7 @@ pub use crate::checkout::{CheckoutArgs, cmd_checkout};
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use flate2::Compression;
-use obj::parse_hash;
+use obj::{parse_hash, Object};
 use objects::Commit;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -190,15 +190,23 @@ pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), Cm
     let hash_bytes = hex::decode(&args.object).map_err(|_| CmdError::Fatal(String::from("invalid object hash")))?;
     let hash: [u8; 20] = hash_bytes.try_into().expect("invalid object hash");
 
-    match obj::read_object_raw(&root, &hash, global_opts.git_mode) {
-        Ok(Some(bytes)) => {
-            let contents = String::from_utf8_lossy(&bytes);
-            println!("{}", contents);
-            Ok(())
-        },
-        Ok(None) => Err(CmdError::Fatal(format!("object {} not found in store", args.object))),
-        Err(e) => Err(e)
+    let object = match obj::search_object(&root, &hash, global_opts.git_mode) {
+        Ok(None) => return Err(CmdError::Fatal(format!("object {} not found in store", args.object))),
+        Err(e) => return Err(e),
+        Ok(Some(x)) => x
+    };
+
+    // Check that object has expected type
+    match (&object, &args.r#type) {
+        (Object::Blob(_), ObjectType::Blob) | 
+        (Object::Commit(_), ObjectType::Commit) | 
+        (Object::Tree(_), ObjectType::Tree) | 
+        (Object::Tag, ObjectType::Tag) => (),
+        _ => { return Err(CmdError::Fatal(String::from("bad file"))); }
     }
+
+    println!("{}", object);
+    Ok(())
 }
 
 pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {

@@ -51,7 +51,7 @@ fn checkout_tree(root: &PathBuf, tree: &Vec<GitTreeLeaf>, git_mode: bool) -> Res
         println!("{}", leaf);
 
         match get_object(root, &leaf.hash, git_mode) {
-            Ok(Object::Blob) => {}, // TODO: Write the file
+            Ok(Object::Blob(_bytes)) => {}, // TODO: Write the file
             Ok(Object::Tree(_)) => {}, // TODO: Recurse on the subtree
             Ok(_) => return Err(CmdError::Fatal(String::from("Unexpected object found in tree. Expecting only blobs or trees"))),
             Err(e) => return Err(e)

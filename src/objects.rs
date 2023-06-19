@@ -8,10 +8,21 @@ use flate2::bufread::ZlibDecoder;
 use crate::CmdError;
 
 pub enum Object {
-    Blob,
+    Blob(Vec<u8>),
     Commit(Commit),
     Tree(Vec<GitTreeLeaf>),
     Tag
+}
+
+impl fmt::Display for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Object::Blob(bytes) => write!(f, "{}", String::from_utf8_lossy(&bytes)),
+            Object::Commit(c) => write!(f, "{}", c),
+            Object::Tree(t) => write!(f, "TODO: IMPL DISPLAY FOR TREE"),
+            Object::Tag => write!(f, "TODO: IMPL DISPLAY FOR TAG")
+        }
+    }
 }
 
 pub struct Commit {
@@ -23,6 +34,19 @@ pub struct Commit {
     /// The SHA1 hash of the commit's parent if it has one
     pub parent: Option<[u8; 20]>,
     pub message: String,
+}
+
+impl fmt::Display for Commit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "tree: {}", hex::encode(&self.tree));
+        if let Some(parent) = &self.parent {
+            writeln!(f, "parent: {}", hex::encode(parent));
+        } 
+        writeln!(f, "author: {}", &self.author);
+        writeln!(f, "committer: {}", &self.committer);
+        writeln!(f, "");
+        writeln!(f, "{}", &self.message)
+    }
 }
 
 pub struct GitTreeLeaf {
@@ -62,7 +86,7 @@ pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<
             let contents = &bytes[file_size_end+1..];
 
             match object_type {
-                b"blob" => Ok(Some(Object::Blob)),
+                b"blob" => Ok(Some(Object::Blob(contents.to_vec()))),
                 b"tree" => {
                     match parse_tree(contents) {
                         Ok(t) => Ok(Some(Object::Tree(t))),
