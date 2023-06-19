@@ -2,7 +2,8 @@ use std::{fs, path::PathBuf, env};
 
 use clap::Args;
 
-use crate::{GlobalOpts, repo_find, obj::{get_object, Commit, Object, search_object, parse_hash, Tree}, CmdError};
+use crate::{GlobalOpts, repo_find, CmdError};
+use crate::objects::{get_object, Commit, Object, search_object, parse_hash, Tree};
 
 #[derive(Args)]
 pub struct CheckoutArgs {
