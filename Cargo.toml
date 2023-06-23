@@ -6,11 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.71"
 clap = { version = "4.2.7", features = ["derive"] }
 configparser = "3.0.2"
 flate2 = "1.0.26"
 hex = "0.4.3"
 sha1 = "0.10.5"
-
-[dev-dependencies]
-utils = { path = "utils" }
