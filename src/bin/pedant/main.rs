@@ -2,14 +2,18 @@
 This is a command line utility for comparing the output of the Grit binary to that of Git.
 */
 use clap::Parser;
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command, env};
 use anyhow::Result;
 
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Pedant: a command line application for comparing the output of command line applications.")]
 struct Args {
+    #[arg(long)]
+    no_clean: bool,
     test_dir: String,
+    left_exe: String,
+    right_exe: String
 }
 
 
@@ -40,14 +44,31 @@ fn run(args: Args) -> Result<()> {
             let test_name = path.file_name().map(|x| x.to_string_lossy()).unwrap_or(default_name.into());
             println!("Running test {}", test_name);
 
-            // Read the "left" command
-            let left_cmd_path = path.join("cmd_left");
-            let left_cmd_bytes = fs::read(left_cmd_path)?;
-            let _left_cmd = String::from_utf8_lossy(&left_cmd_bytes); 
+            let cmd_path = path.join("cmds");
+            let cmd_bytes = fs::read(cmd_path)?;
+            let cmd_str = String::from_utf8_lossy(&cmd_bytes); 
+            let cmd_tokens: Vec<&str> = cmd_str.split(" ").collect();
+
+            env::set_current_dir(&after_left)?;
+            let left_exe = PathBuf::from(&args.left_exe);
+            let left_output = Command::new(left_exe)
+                .args(&cmd_tokens)
+                .output()?;
+
+            env::set_current_dir(&after_right)?;
+            let right_exe = PathBuf::from(&args.right_exe);
+            let right_output = Command::new(&right_exe)
+                .args(&cmd_tokens)
+                .output()?;
 
             // CLEANUP
-            fs::remove_dir_all(after_left)?;
-            fs::remove_dir_all(after_right)?;
+            if !args.no_clean {
+                fs::remove_dir_all(after_left)?;
+                fs::remove_dir_all(after_right)?;
+            }
+
+            assert!(left_output.stdout == right_output.stdout);
+            assert!(left_output.stderr == right_output.stderr);
         }
     }
 
