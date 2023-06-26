@@ -2,10 +2,12 @@ use std::{path::{PathBuf, Path}, env, fs};
 
 use configparser::ini::Ini;
 
-use crate::{GlobalOpts, CmdError};
+use crate::{GlobalOpts, CmdError, git_dir_name, program_name};
 
 
-pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), CmdError> {
+    let git_dir_name = git_dir_name(&global_opts);
+
     let git_dirs: Vec<PathBuf> = vec![
         "branches",
         "hooks",
@@ -21,7 +23,7 @@ pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), Cm
         .map(|p| Path::new(&p).to_path_buf())
         .unwrap_or(env::current_dir().unwrap());
 
-    let gitdir = root.join(".grit"); 
+    let gitdir = root.join(git_dir_name); 
     for p in git_dirs {
         let path = gitdir.join(&p);
         fs::create_dir_all(&path).map_err(CmdError::IOError)?;
@@ -37,7 +39,13 @@ pub fn cmd_init(path: Option<String>, _global_opts: GlobalOpts) -> Result<(), Cm
     let head_contents = "ref: refs/heads/master";
     fs::write(head_path, head_contents).map_err(CmdError::IOError)?;
 
-    println!("Initialized empty Grit repository in {}", gitdir.to_string_lossy());
+    // Add trailing slash if a directory name to match Git
+    let mut gitdir_str: String = gitdir.to_string_lossy().into();
+    if gitdir.is_dir() {
+        gitdir_str.push('/');
+    }
+
+    println!("Initialized empty {} repository in {}", program_name(&global_opts), gitdir_str);
     Ok(())
 }
 

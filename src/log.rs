@@ -12,7 +12,7 @@ pub struct LogArgs {
 
 pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, global_opts.git_mode).unwrap_or_else(|| {
+    let root = repo_find(&path, &global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 

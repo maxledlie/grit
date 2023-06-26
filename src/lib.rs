@@ -74,8 +74,8 @@ impl fmt::Display for CmdError {
 }
 
 // Returns the path to the root of the repository at the given path.
-fn repo_find(path: &Path, git_mode: bool) -> Option<PathBuf> {
-    let git_dir = if git_mode { ".git" } else { ".grit" };
+fn repo_find(path: &Path, global_opts: &GlobalOpts) -> Option<PathBuf> {
+    let git_dir = git_dir_name(global_opts);
 
     if path.join(git_dir).exists() {
         return Some(path.to_path_buf());
@@ -86,5 +86,13 @@ fn repo_find(path: &Path, git_mode: bool) -> Option<PathBuf> {
         return None
     }
 
-    repo_find(parent.unwrap(), git_mode)
+    repo_find(parent.unwrap(), &global_opts)
+}
+
+pub fn git_dir_name(global_opts: &GlobalOpts) -> &str {
+    if global_opts.git_mode { ".git" } else { ".grit" }
+}
+
+pub fn program_name(global_opts: &GlobalOpts) -> &str { 
+    if global_opts.git_mode { "Git" } else { "Grit" }
 }

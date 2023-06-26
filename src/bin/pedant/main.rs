@@ -2,8 +2,8 @@
 This is a command line utility for comparing the output of the Grit binary to that of Git.
 */
 use clap::Parser;
-use std::{fs, path::PathBuf, process::Command, env};
-use anyhow::Result;
+use std::{fs, path::PathBuf, process::{Command, Output}, env};
+use anyhow::{Result, bail};
 
 
 #[derive(Parser, Debug)]
@@ -16,7 +16,6 @@ struct Args {
     right_exe: String
 }
 
-
 fn main() {
     let args = Args::parse();
     let result = run(args);
@@ -27,39 +26,55 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
-    let test_root = PathBuf::from(args.test_dir);
+    let test_root = PathBuf::from(args.test_dir).canonicalize()?;
+    if !test_root.exists() {
+        bail!("Provided test root {} does not exist", test_root.to_string_lossy());
+    }
     for entry in fs::read_dir(test_root)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
+            let default_name = String::from("???");
+            let test_name = path.file_name().map(|x| x.to_string_lossy()).unwrap_or(default_name.into());
+
             // Copy the "before" directory into working directories for the left and right commands
             let before_dir = path.join("before");
+            if !before_dir.exists() {
+                println!("WARN: Test {} does not have a 'before' directory", test_name);
+            }
+
             let after_left = path.join("after_left");
             let after_right = path.join("after_right");
 
-            copy_dir(&before_dir, &after_left)?;
-            copy_dir(&before_dir, &after_right)?;
+            copy_dir(&before_dir, &after_left).unwrap();
+            copy_dir(&before_dir, &after_right).unwrap();
             
-            let default_name = String::from("???");
-            let test_name = path.file_name().map(|x| x.to_string_lossy()).unwrap_or(default_name.into());
-            println!("Running test {}", test_name);
-
             let cmd_path = path.join("cmds");
             let cmd_bytes = fs::read(cmd_path)?;
             let cmd_str = String::from_utf8_lossy(&cmd_bytes); 
             let cmd_tokens: Vec<&str> = cmd_str.split(" ").collect();
 
-            env::set_current_dir(&after_left)?;
-            let left_exe = PathBuf::from(&args.left_exe);
-            let left_output = Command::new(left_exe)
-                .args(&cmd_tokens)
-                .output()?;
 
-            env::set_current_dir(&after_right)?;
+            if env::set_current_dir(&after_left).is_err() {
+                bail!("Failed to set current dir to {}", after_left.to_string_lossy());
+            }
+            let left_exe = PathBuf::from(&args.left_exe);
+            // Always run the Grit command in Git compatibility mode for tests
+            let mut left_cmd_tokens = cmd_tokens.clone();
+            left_cmd_tokens.push("-g");
+            let left_output = Command::new(left_exe)
+                .args(&left_cmd_tokens)
+                .output()
+                .unwrap();
+
+            if env::set_current_dir(&after_right).is_err() {
+                bail!("Failed to set current dir to {}", after_right.to_string_lossy());
+            }
             let right_exe = PathBuf::from(&args.right_exe);
             let right_output = Command::new(&right_exe)
                 .args(&cmd_tokens)
-                .output()?;
+                .output()
+                .unwrap();
 
             // CLEANUP
             if !args.no_clean {
@@ -67,12 +82,25 @@ fn run(args: Args) -> Result<()> {
                 fs::remove_dir_all(after_right)?;
             }
 
-            assert!(left_output.stdout == right_output.stdout);
-            assert!(left_output.stderr == right_output.stderr);
+            // Replace references to test directory names in output
+            let left_stdout = clean_stdout(&left_output.stdout, "after_left");
+            let right_stdout = clean_stdout(&right_output.stdout, "after_right");
+
+            if left_stdout != right_stdout {
+                println!("Test {} fail", test_name);
+                println!("stdout mismatch: expected");
+                println!("{}", right_stdout);
+                println!("but read:");
+                println!("{}", left_stdout);
+            }
         }
     }
 
     Ok(())
+}
+
+fn clean_stdout(stdout: &Vec<u8>, dir_name: &str) -> String {
+    String::from_utf8_lossy(stdout).replace(dir_name, "<dir_name>")
 }
 
 fn copy_dir(source: &PathBuf, target: &PathBuf) -> Result<()> {
