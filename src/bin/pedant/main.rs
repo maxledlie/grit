@@ -83,8 +83,10 @@ fn run(args: Args) -> Result<()> {
             }
 
             // Replace references to test directory names in output
-            let left_stdout = clean_stdout(&left_output.stdout, "after_left");
-            let right_stdout = clean_stdout(&right_output.stdout, "after_right");
+            let left_stdout = clean_output(&left_output.stdout, "after_left");
+            let right_stdout = clean_output(&right_output.stdout, "after_right");
+            let left_stderr = clean_output(&left_output.stderr, "after_left");
+            let right_stderr = clean_output(&right_output.stderr, "after_right");
 
             if left_stdout != right_stdout {
                 println!("Test {} fail", test_name);
@@ -93,14 +95,22 @@ fn run(args: Args) -> Result<()> {
                 println!("but read:");
                 println!("{}", left_stdout);
             }
+
+            if left_stderr != right_stderr {
+                println!("Test {} fail", test_name);
+                println!("stderr mismatch: expected");
+                println!("{}", right_stderr);
+                println!("but read:");
+                println!("{}", left_stderr);
+            }
         }
     }
 
     Ok(())
 }
 
-fn clean_stdout(stdout: &Vec<u8>, dir_name: &str) -> String {
-    String::from_utf8_lossy(stdout).replace(dir_name, "<dir_name>")
+fn clean_output(stdout: &Vec<u8>, dir_name: &str) -> String {
+    String::from_utf8_lossy(stdout).replace(dir_name, "<dir_name>").trim().to_string()
 }
 
 fn copy_dir(source: &PathBuf, target: &PathBuf) -> Result<()> {

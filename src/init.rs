@@ -46,6 +46,16 @@ pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), Cmd
     }
 
     println!("Initialized empty {} repository in {}", program_name(&global_opts), gitdir_str);
+    eprintln!("hint: Using 'master' as the name for the initial branch. This default branch name");
+    eprintln!("hint: is subject to change. To configure the initial branch name to use in all");
+    eprintln!("hint: of your new repositories, which will suppress this warning, call:");
+    eprintln!("hint: ");
+    eprintln!("hint: \tgit config --global init.defaultBranch <name>");
+    eprintln!("hint: ");
+    eprintln!("hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and");
+    eprintln!("hint: 'development'. The just-created branch can be renamed via this command:");
+    eprintln!("hint: ");
+    eprintln!("hint: \tgit branch -m <name>");
     Ok(())
 }
 
