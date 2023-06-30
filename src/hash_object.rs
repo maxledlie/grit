@@ -4,7 +4,7 @@ use clap::{arg, Args};
 use flate2::{write::ZlibEncoder, Compression};
 use sha1::{Digest, Sha1};
 
-use crate::{GlobalOpts, CmdError, repo_find};
+use crate::{GlobalOpts, CmdError, repo_find, git_dir_name};
 
 #[derive(Args)]
 pub struct HashObjectArgs {
@@ -27,7 +27,7 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
 
     let bytes = [header_bytes, &content_bytes].concat();
 
-    hasher.update(bytes);
+    hasher.update(&bytes);
     let hash_bytes = hasher.finalize();
     let hash_str = hex::encode(hash_bytes);
     println!("{}", hash_str);
@@ -41,9 +41,9 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
         panic!("fatal: not a grit repository");
     });
 
-    // Compress the file contents
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(&content_bytes).unwrap_or_else(|e| {
+    // Compress the file contents.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(&bytes).unwrap_or_else(|e| {
         panic!("Compression of object failed: {e}");
     });
 
@@ -57,7 +57,7 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
     let dir_name = &hash_str[..2];
     let file_name = &hash_str[2..];
 
-    let dir = root.join(format!(".grit/objects/{}", dir_name));
+    let dir = root.join(format!("{}/objects/{}", git_dir_name(&global_opts), dir_name));
 
     fs::create_dir_all(&dir).and_then(|()| {
         File::create(dir.join(file_name))

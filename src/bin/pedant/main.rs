@@ -67,33 +67,50 @@ fn run(args: Args) -> Result<()> {
             let cmd_path = path.join("cmds");
             let cmd_bytes = fs::read(cmd_path)?;
             let cmd_str = String::from_utf8_lossy(&cmd_bytes); 
-            let cmd_tokens: Vec<&str> = cmd_str.split(" ").collect();
+            let cmd_lines: Vec<&str> = cmd_str.split("\n").collect();
 
+            let mut left_stdout = String::new();
+            let mut left_stderr = String::new();
+            let mut right_stdout = String::new();
+            let mut right_stderr = String::new();
+            
+            // Run left command
             if env::set_current_dir(&after_left).is_err() {
                 bail!("Failed to set current dir to {}", after_left.to_string_lossy());
             }
+            for cmd_line in &cmd_lines {
+                // Always run the Grit command in Git compatibility mode for tests
+                let mut cmd_tokens: Vec<&str> = cmd_line.split(" ").collect();
+                cmd_tokens.push("-g");
+                let output = Command::new(&left_exe)
+                    .args(&cmd_tokens)
+                    .output()
+                    .unwrap();
 
-            // Always run the Grit command in Git compatibility mode for tests
-            let mut left_cmd_tokens = cmd_tokens.clone();
-            left_cmd_tokens.push("-g");
-            let left_output = Command::new(&left_exe)
-                .args(&left_cmd_tokens)
-                .output()
-                .unwrap();
+                left_stdout += &String::from_utf8_lossy(&output.stdout);
+                left_stderr += &String::from_utf8_lossy(&output.stderr);
+            }
 
+            // Run right command
             if env::set_current_dir(&after_right).is_err() {
                 bail!("Failed to set current dir to {}", after_right.to_string_lossy());
             }
-            let right_output = Command::new(&right_exe)
-                .args(&cmd_tokens)
-                .output()
-                .unwrap();
+            for cmd_line in &cmd_lines {
+                let cmd_tokens: Vec<&str> = cmd_line.split(" ").collect();
+                let output = Command::new(&right_exe)
+                    .args(&cmd_tokens)
+                    .output()
+                    .unwrap();
+
+                right_stdout += &String::from_utf8_lossy(&output.stdout);
+                right_stderr += &String::from_utf8_lossy(&output.stderr);
+            }
 
             // Replace references to test directory names in output
-            let left_stdout = clean_output(&left_output.stdout, "after_left");
-            let right_stdout = clean_output(&right_output.stdout, "after_right");
-            let left_stderr = clean_output(&left_output.stderr, "after_left");
-            let right_stderr = clean_output(&right_output.stderr, "after_right");
+            let left_stdout = clean_output(left_stdout, "after_left");
+            let right_stdout = clean_output(right_stdout, "after_right");
+            let left_stderr = clean_output(left_stderr, "after_left");
+            let right_stderr = clean_output(right_stderr, "after_right");
 
             if left_stdout != right_stdout {
                 println!("Test {} fail", test_name);
@@ -139,8 +156,8 @@ fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn clean_output(stdout: &Vec<u8>, dir_name: &str) -> String {
-    String::from_utf8_lossy(stdout).replace(dir_name, "<dir_name>").trim().to_string()
+fn clean_output(output: String, dir_name: &str) -> String {
+    output.replace(dir_name, "<dir_name>").trim().to_string()
 }
 
 fn copy_dir(source: &PathBuf, target: &PathBuf) -> Result<()> {
