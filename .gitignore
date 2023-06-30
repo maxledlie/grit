@@ -1,3 +1,5 @@
 /target
 .vscode/launch.json
 .vscode/settings.json
+pedant_tests/*/after_left/*
+pedant_tests/*/after_right/*

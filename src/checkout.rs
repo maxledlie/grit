@@ -23,7 +23,7 @@ pub fn cmd_checkout(args: CheckoutArgs, global_opts: GlobalOpts) -> Result<(), C
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, &global_opts).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 

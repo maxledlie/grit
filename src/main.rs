@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use grit::{Cli, Command, cmd_init, cmd_hash_object, cmd_cat_file, cmd_log, cmd_checkout, cmd_status};
+use grit::{Cli, Command, cmd_init, cmd_hash_object, cmd_cat_file, cmd_log, cmd_checkout, cmd_status, program_name};
 
 fn main() {
     let args = Cli::parse();
@@ -16,6 +16,6 @@ fn main() {
     };
 
     if let Some(err) = result.err() {
-        println!("{}", err);
+        eprintln!("{}", err);
     }
 }

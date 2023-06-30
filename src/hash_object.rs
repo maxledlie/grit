@@ -37,7 +37,7 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, &global_opts).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
@@ -57,7 +57,7 @@ pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<
     let dir_name = &hash_str[..2];
     let file_name = &hash_str[2..];
 
-    let dir = root.join(format!("{}/objects/{}", git_dir_name(&global_opts), dir_name));
+    let dir = root.join(format!("{}/objects/{}", git_dir_name(global_opts), dir_name));
 
     fs::create_dir_all(&dir).and_then(|()| {
         File::create(dir.join(file_name))

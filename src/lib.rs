@@ -45,7 +45,7 @@ pub enum Command {
     Status(StatusArgs)
 }
 
-#[derive(Args)]
+#[derive(Args, Clone, Copy)]
 pub struct GlobalOpts {
     #[arg(short, long, global = true)]
     pub git_mode: bool
@@ -67,14 +67,14 @@ pub enum CmdError {
 impl fmt::Display for CmdError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            CmdError::IOError(e) => write!(f, "fatal: {}", e.to_string()),
-            CmdError::Fatal(e) => write!(f, "fatal: {}", e)
+            CmdError::IOError(e) => write!(f, "{}", e.to_string()),
+            CmdError::Fatal(e) => write!(f, "{}", e)
         }
     }
 }
 
 // Returns the path to the root of the repository at the given path.
-fn repo_find(path: &Path, global_opts: &GlobalOpts) -> Option<PathBuf> {
+fn repo_find(path: &Path, global_opts: GlobalOpts) -> Option<PathBuf> {
     let git_dir = git_dir_name(global_opts);
 
     if path.join(git_dir).exists() {
@@ -86,13 +86,13 @@ fn repo_find(path: &Path, global_opts: &GlobalOpts) -> Option<PathBuf> {
         return None
     }
 
-    repo_find(parent.unwrap(), &global_opts)
+    repo_find(parent.unwrap(), global_opts)
 }
 
-pub fn git_dir_name(global_opts: &GlobalOpts) -> &str {
-    if global_opts.git_mode { ".git" } else { ".grit" }
+pub fn git_dir_name(global_opts: GlobalOpts) -> String {
+    if global_opts.git_mode { String::from(".git") } else { String::from(".grit") }
 }
 
-pub fn program_name(global_opts: &GlobalOpts) -> &str { 
-    if global_opts.git_mode { "Git" } else { "Grit" }
+pub fn program_name(global_opts: GlobalOpts) -> String { 
+    if global_opts.git_mode { String::from("Git") } else { String::from("Grit") }
 }

@@ -4,7 +4,7 @@ use crate::{GlobalOpts, CmdError, git_dir_name, program_name};
 
 
 pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), CmdError> {
-    let git_dir_name = git_dir_name(&global_opts);
+    let git_dir_name = git_dir_name(global_opts.clone());
 
     let git_dirs: Vec<PathBuf> = vec![
         "branches",
@@ -42,7 +42,7 @@ pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), Cmd
         gitdir_str.push('/');
     }
 
-    println!("Initialized empty {} repository in {}", program_name(&global_opts), gitdir_str);
+    println!("Initialized empty {} repository in {}", program_name(global_opts), gitdir_str);
     eprintln!("hint: Using 'master' as the name for the initial branch. This default branch name");
     eprintln!("hint: is subject to change. To configure the initial branch name to use in all");
     eprintln!("hint: of your new repositories, which will suppress this warning, call:");

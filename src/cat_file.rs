@@ -15,7 +15,7 @@ pub struct CatFileArgs {
 
 pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), CmdError>{
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, &global_opts).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
@@ -34,7 +34,11 @@ pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), Cm
         (Object::Commit(_), ObjectType::Commit) | 
         (Object::Tree(_), ObjectType::Tree) | 
         (Object::Tag, ObjectType::Tag) => (),
-        _ => { return Err(CmdError::Fatal(String::from("bad file"))); }
+        _ => {
+            let hash_str = hex::encode(&hash);
+            let msg = format!("fatal: git cat-file {}: bad file", hash_str);
+            return Err(CmdError::Fatal(msg)); 
+        }
     }
 
     println!("{}", object);

@@ -11,7 +11,7 @@ pub struct StatusArgs {
 
 pub fn cmd_status(_args: StatusArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, &global_opts).unwrap_or_else(|| {
+    let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
