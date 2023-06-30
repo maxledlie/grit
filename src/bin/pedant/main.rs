@@ -26,6 +26,7 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
+    println!("Running Pedant tests");
     let test_root = PathBuf::from(args.test_dir).canonicalize()?;
     if !test_root.exists() {
         bail!("Provided test root {} does not exist", test_root.to_string_lossy());
@@ -53,6 +54,13 @@ fn run(args: Args) -> Result<()> {
             let after_left = path.join("after_left");
             let after_right = path.join("after_right");
 
+            if after_left.exists() {
+                fs::remove_dir_all(&after_left)?;
+            }
+            if after_right.exists() {
+                fs::remove_dir_all(&after_right)?;
+            }
+
             copy_dir(&before_dir, &after_left).unwrap();
             copy_dir(&before_dir, &after_right).unwrap();
             
@@ -68,7 +76,6 @@ fn run(args: Args) -> Result<()> {
             // Always run the Grit command in Git compatibility mode for tests
             let mut left_cmd_tokens = cmd_tokens.clone();
             left_cmd_tokens.push("-g");
-            println!("Running left cmd");
             let left_output = Command::new(&left_exe)
                 .args(&left_cmd_tokens)
                 .output()
@@ -77,12 +84,10 @@ fn run(args: Args) -> Result<()> {
             if env::set_current_dir(&after_right).is_err() {
                 bail!("Failed to set current dir to {}", after_right.to_string_lossy());
             }
-            println!("Running right cmd");
             let right_output = Command::new(&right_exe)
                 .args(&cmd_tokens)
                 .output()
                 .unwrap();
-
 
             // Replace references to test directory names in output
             let left_stdout = clean_output(&left_output.stdout, "after_left");
@@ -106,8 +111,22 @@ fn run(args: Args) -> Result<()> {
                 println!("{}", left_stderr);
             }
 
-            println!("Comparing output contents");
-            compare_directory(&after_left, &after_right, &test_name)?;
+            // Run Unix diff command to print differences between left and right directories
+            let diff_args = vec![
+                after_left.to_string_lossy().to_string(),
+                after_right.to_string_lossy().to_string(),
+                String::from("--recursive"),
+                String::from("--color"),
+                String::from("--exclude"),
+                String::from("*.sample"), // TODO: Read exclusions from file
+            ];
+            let diff_output = Command::new("diff").args(diff_args).output().unwrap();
+
+            if diff_output.stderr.len() > 0 || diff_output.stdout.len() > 0 {
+                println!("Test {} failed:", &test_name);
+                println!("{}", String::from_utf8_lossy(&diff_output.stderr));
+                println!("{}", String::from_utf8_lossy(&diff_output.stdout));
+            }
 
             // CLEANUP
             if !args.no_clean {
@@ -118,65 +137,6 @@ fn run(args: Args) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn compare_directory(left: &PathBuf, right: &PathBuf, test_name: &str) -> Result<bool> {
-    // Check that files in the left directory also exist in the right directory and
-    // that their contents are exactly equal.
-    for entry in fs::read_dir(left)? {
-        let entry = entry?;
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        let right_entry = right.join(&file_name);
-        if !right_entry.exists() {
-            println!("Test {} fail", test_name);
-            println!( "File {} exists in left output dir but not in right", &file_name);
-            return Ok(false);
-        }
-        if entry.file_type()?.is_dir() {
-            let left_child = entry.path().canonicalize()?;
-            let right_child = right_entry.canonicalize()?;
-            if !compare_directory(&left_child, &right_child, test_name)? {
-                return Ok(false);
-            }
-        }
-        if entry.file_type()?.is_file() {
-            let left_bytes = fs::read(entry.path())?;
-            let right_bytes = fs::read(right_entry)?;
-
-            if left_bytes.len() != right_bytes.len() {
-                println!("Test {} fail", test_name);
-                println!("Mismatched sizes for {} in left and right output dirs", &file_name);
-                return Ok(false);
-            }
-
-            for i in 0..left_bytes.len() {
-                if left_bytes[i] != right_bytes[i] {
-                    println!("Test {} fail", test_name);
-                    println!("Mismatch in file {}", file_name);
-                    return Ok(false);
-                }
-            }
-        }
-    }
-
-    // Check that files in the right directory also exist in the left directory
-    for entry in fs::read_dir(right)? {
-        let entry = entry?;
-        let file_name = entry.file_name();
-        if entry.file_type()?.is_file() {
-            let left_entry = left.join(&file_name);
-            if !left_entry.exists() {
-                println!("Test {} fail", test_name);
-                println!(
-                    "File {} exists in right output dir but not in left",
-                    file_name.to_string_lossy()
-                );
-                return Ok(false);
-            }
-        }
-    }
-
-    Ok(true)
 }
 
 fn clean_output(stdout: &Vec<u8>, dir_name: &str) -> String {

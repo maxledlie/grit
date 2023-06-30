@@ -9,6 +9,15 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "test",
+            "args": ["-c", "cargo build && cargo run --bin pedant -- --no-clean pedant_tests target/debug/grit /usr/bin/git"],
+            "command": "bash",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
         }
     ]
 }
