@@ -156,32 +156,22 @@ fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn clean_output(output: String, dir_name: &str) -> String {
-    output.replace(dir_name, "<dir_name>").trim().to_string()
+fn copy_dir(from: &PathBuf, to: &PathBuf) -> Result<()> {
+    let args = vec![
+        String::from("-r"),
+        from.to_string_lossy().to_string(),
+        to.to_string_lossy().to_string()
+    ];
+    let output = Command::new("cp").args(args).output()?;
+    if output.stderr.len() > 0 { 
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+    if output.stdout.len() > 0 {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    Ok(())
 }
 
-fn copy_dir(source: &PathBuf, target: &PathBuf) -> Result<()> {
-    if !target.exists() {
-        fs::create_dir(target)?;
-    }
-
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            // TODO: Copy recursively, not just files in the root
-        } else {
-            match path.file_name() {
-                Some(filename) => {
-                    let dest_path = target.join(filename);
-                    fs::copy(&path, &dest_path)?;
-                },
-                None => {
-                    println!("Failed to copy {:?}", path);
-                }
-            }
-        }
-    }
-
-    Ok(())
+fn clean_output(output: String, dir_name: &str) -> String {
+    output.replace(dir_name, "<dir_name>").trim().to_string()
 }
