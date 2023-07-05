@@ -1,10 +1,7 @@
-use std::{fs::{self, File}, env, io::Write};
-
+use std::{fs::{self}, env};
 use clap::{arg, Args};
-use flate2::{write::ZlibEncoder, Compression};
-use sha1::{Digest, Sha1};
 
-use crate::{GlobalOpts, CmdError, repo_find, git_dir_name};
+use crate::{GlobalOpts, CmdError, repo_find, objects::Blob};
 
 #[derive(Args)]
 pub struct HashObjectArgs {
@@ -16,54 +13,24 @@ pub struct HashObjectArgs {
 }
 
 pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
-    let mut hasher: Sha1 = Sha1::new();
-
     // Read the file at the given path
     let Ok(content_bytes) = fs::read(&args.path) else { panic!() };
+    
+    // Assume the object is a blob for now
+    let blob = Blob { bytes: content_bytes };
+    let hash = blob.hash();
 
-    // Prepend header: the file type and size
-    let header_str = args.r#type + " " + &content_bytes.len().to_string() + "\0";
-    let header_bytes = header_str.as_bytes();
-
-    let bytes = [header_bytes, &content_bytes].concat();
-
-    hasher.update(&bytes);
-    let hash_bytes = hasher.finalize();
-    let hash_str = hex::encode(hash_bytes);
+    let hash_str = hex::encode(hash);
     println!("{}", hash_str);
 
-    if !args.write {
-        return Ok(());
+    if args.write {
+        let path = env::current_dir().unwrap_or_else(|_| { panic!() });
+        let root = repo_find(&path, global_opts).unwrap_or_else(|| {
+            panic!("fatal: not a grit repository");
+        });
+
+        blob.write(&root, global_opts)?;
     }
-
-    let path = env::current_dir().unwrap_or_else(|_| { panic!() });
-    let root = repo_find(&path, global_opts).unwrap_or_else(|| {
-        panic!("fatal: not a grit repository");
-    });
-
-    // Compress the file contents.
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(&bytes).unwrap_or_else(|e| {
-        panic!("Compression of object failed: {e}");
-    });
-
-    let compressed_bytes = encoder.finish().unwrap_or_else(|e| {
-        panic!("Compression of object failed: {e}");
-    });
-
-    // The first two characters of the SHA1 hash are used to name a directory. The remaining 14 name the file within
-    // that directory. This is just for practical reasons, because most operating systems slow down on directories
-    // with loads of files.
-    let dir_name = &hash_str[..2];
-    let file_name = &hash_str[2..];
-
-    let dir = root.join(format!("{}/objects/{}", git_dir_name(global_opts), dir_name));
-
-    fs::create_dir_all(&dir).and_then(|()| {
-        File::create(dir.join(file_name))
-    }).and_then(|mut f| {
-        f.write_all(&compressed_bytes)
-    }).map_err(CmdError::IOError)?;
 
     Ok(())
 }

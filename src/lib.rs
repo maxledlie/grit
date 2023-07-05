@@ -2,6 +2,7 @@
 
 pub mod objects;
 
+pub use crate::add::{AddArgs, cmd_add};
 pub use crate::checkout::{CheckoutArgs, cmd_checkout};
 pub use crate::cat_file::{CatFileArgs, cmd_cat_file};
 pub use crate::hash_object::{HashObjectArgs, cmd_hash_object};
@@ -11,6 +12,7 @@ pub use crate::status::{StatusArgs, cmd_status};
 
 // END INTERFACE
 
+mod add;
 mod cat_file;
 mod checkout;
 mod hash_object;
@@ -37,6 +39,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    Add(AddArgs),
     Init { path: Option<String> },
     HashObject(HashObjectArgs),
     CatFile(CatFileArgs),

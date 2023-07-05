@@ -1,11 +1,12 @@
 // This module should encapsulate knowledge about how objects are represented in Git.
 // Callers should only need to know that objects are identified by a hash.
 
-use std::{path::PathBuf, fs, io::Read, collections::HashMap, fmt};
+use std::{path::PathBuf, fs::{self, File}, io::{Read, Write}, collections::HashMap, fmt};
 
-use flate2::bufread::ZlibDecoder;
+use flate2::{bufread::ZlibDecoder, write::ZlibEncoder, Compression};
+use sha1::{Sha1, Digest};
 
-use crate::CmdError;
+use crate::{CmdError, git_dir_name, GlobalOpts};
 
 pub enum Object {
     Blob(Vec<u8>),
@@ -22,6 +23,64 @@ impl fmt::Display for Object {
             Object::Tree(t) => write!(f, "{}", t),
             Object::Tag => write!(f, "TODO: IMPL DISPLAY FOR TAG")
         }
+    }
+}
+
+pub struct Blob {
+    pub bytes: Vec<u8>
+}
+
+impl Blob {
+    pub fn hash(&self) -> [u8; 20] {
+        let mut hasher: Sha1 = Sha1::new();
+        // Prepend header: the file type and size
+        let header_str = String::from("blob ") + &self.bytes.len().to_string() + "\0";
+        let header_bytes = header_str.as_bytes();
+
+        let bytes = [header_bytes, &self.bytes].concat();
+
+        hasher.update(&bytes);
+        hasher.finalize().into()
+    }
+
+    pub fn compress(&self) -> Vec<u8> {
+        // Prepend header: the file type and size
+        let header_str = String::from("blob ") + &self.bytes.len().to_string() + "\0";
+        let header_bytes = header_str.as_bytes();
+
+        let bytes = [header_bytes, &self.bytes].concat();
+
+        // Compress the file contents.
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&bytes).unwrap_or_else(|e| {
+            panic!("Compression of object failed: {e}");
+        });
+
+        encoder.finish().unwrap_or_else(|e| {
+            panic!("Compression of object failed: {e}");
+        })
+    }
+
+    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<(), CmdError> {
+        let hash = self.hash();
+        let compressed_bytes = self.compress();
+
+        // The first two characters of the SHA1 hash are used to name a directory. The remaining 14 name the file within
+        // that directory. This is just for practical reasons, because most operating systems slow down on directories
+        // with loads of files.
+        let hash_str = hex::encode(hash);
+        let dir_name = &hash_str[..2];
+        let file_name = &hash_str[2..];
+
+        let dir = repo_root.join(format!("{}/objects/{}", git_dir_name(global_opts), dir_name));
+
+        fs::create_dir_all(&dir).and_then(|()| {
+            File::create(dir.join(file_name))
+        }).and_then(|mut f| {
+            f.write_all(&compressed_bytes)
+        }).map_err(CmdError::IOError)?;
+
+        Ok(())
     }
 }
 

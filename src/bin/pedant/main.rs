@@ -134,8 +134,8 @@ fn run(args: Args) -> Result<()> {
                 after_right.to_string_lossy().to_string(),
                 String::from("--recursive"),
                 String::from("--color"),
-                String::from("--exclude"),
-                String::from("*.sample"), // TODO: Read exclusions from file
+                String::from("--exclude-from"),
+                String::from("../../exclude")
             ];
             let diff_output = Command::new("diff").args(diff_args).output().unwrap();
 
