@@ -49,14 +49,55 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
         }
     }
 
-    let index = Index {
-        version: 2,
-        items: vec![item]
-    };
+    let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
+    let mut index: Index;
+    if index_path.exists() {
+        let index_bytes = fs::read(root.join(".git/index")).map_err(CmdError::IOError)?;
+        index = Index::deserialize(index_bytes)?;
+
+        // Find position to insert this item in that will preserve ordering by path name
+        let new_path_str = item.path.to_string_lossy();
+        let new_path_bytes = new_path_str.as_bytes();
+        for i in 0..index.items.len() {
+            let current_path_str = index.items[i].path.to_string_lossy();
+            let current_path_bytes = current_path_str.as_bytes();
+            if mem_cmp(new_path_bytes, current_path_bytes) > 0 {
+                index.items.insert(i, item.clone());
+                break;
+            }
+        }
+    } else {
+        index = Index {
+            version: 2,
+            items: vec![item]
+        };
+    }
 
     let index_bytes = index.serialize()?;
-    let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     fs::write(index_path, index_bytes).map_err(CmdError::IOError)?;
 
     Ok(())
+}
+
+// Compares the byte arrays as a string of unsigned bytes. Returns -1 if left is greater, 0 if equal, 1 if right is greater.
+fn mem_cmp(left: &[u8], right: &[u8]) -> isize {
+    let min_len: usize = std::cmp::min(left.len(), right.len());
+    for i in 0..min_len {
+        if left[i] < right[i] {
+            return 1;
+        }
+        if left[i] > right[i] {
+            return -1;
+        }
+    }
+
+    // All aligned bytes were equal: the larger string is the longer one
+    if left.len() > right.len() {
+        return -1;
+    }
+    if left.len() < right.len() {
+        return 1;
+    }
+
+    return 0;
 }

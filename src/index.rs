@@ -6,9 +6,13 @@ use crate::CmdError;
 
 pub struct Index {
     pub version: u32,
+
+    // These should be stored in ascending order on the name field.
+    // Entries with the same name are sorted by their stage field.
     pub items: Vec<IndexItem>
 }
 
+#[derive(Clone)]
 pub struct IndexItem {
     pub ctime: u32,
     pub ctime_nsec: u32,
@@ -40,27 +44,36 @@ impl Index {
         let num_entries = read_u32(&bytes, &mut pos);
 
         let mut items = Vec::new();
-        for _ in [..num_entries] {
-            let ctime = read_u32(&bytes, &mut pos);
-            let ctime_nsec = read_u32(&bytes, &mut pos);
-            let mtime = read_u32(&bytes, &mut pos);
-            let mtime_nsec = read_u32(&bytes, &mut pos);
-            let dev = read_u32(&bytes, &mut pos);
-            let ino = read_u32(&bytes, &mut pos);
-            let mode = read_u32(&bytes, &mut pos);
-            let uid = read_u32(&bytes, &mut pos);
-            let gid = read_u32(&bytes, &mut pos);
-            let size = read_u32(&bytes, &mut pos);
-            let hash = read_hash(&bytes, &mut pos);
+        for _ in 0..num_entries {
+            let mut item_pos = 0;
+            let item_bytes = &bytes[pos..];
+            let ctime = read_u32(item_bytes, &mut item_pos);
+            let ctime_nsec = read_u32(item_bytes, &mut item_pos);
+            let mtime = read_u32(item_bytes, &mut item_pos);
+            let mtime_nsec = read_u32(item_bytes, &mut item_pos);
+            let dev = read_u32(item_bytes, &mut item_pos);
+            let ino = read_u32(item_bytes, &mut item_pos);
+            let mode = read_u32(item_bytes, &mut item_pos);
+            let uid = read_u32(item_bytes, &mut item_pos);
+            let gid = read_u32(item_bytes, &mut item_pos);
+            let size = read_u32(item_bytes, &mut item_pos);
+            let hash = read_hash(item_bytes, &mut item_pos);
 
-            let flags = u16::from_be_bytes(bytes[pos..(pos+2)].try_into().unwrap());
-            pos += 2;
+            let flags = u16::from_be_bytes(item_bytes[item_pos..(item_pos+2)].try_into().unwrap());
+            item_pos += 2;
 
             let path_len: usize = (0xFFF & flags).into();
-            let path_bytes = bytes[pos..(pos+path_len)].into();
-            let path = PathBuf::from(String::from_utf8_lossy(path_bytes).to_string());
+            let path_bytes = item_bytes[item_pos..(item_pos+path_len)].into();
+            let path_str = String::from_utf8_lossy(path_bytes).to_string();
+            let path = PathBuf::from(&path_str);
+            item_pos += path_len;
 
-            let item = IndexItem {
+            // Shift pos to account for NUL-padding of path name
+            let npad = 8 - ((item_pos) % 8);
+            let item_len = item_pos + npad;
+            pos += item_len;
+
+            items.push(IndexItem {
                 ctime,
                 ctime_nsec,
                 mtime,
@@ -73,8 +86,7 @@ impl Index {
                 size,
                 hash,
                 path
-            };
-            items.push(item);
+            });
         }
 
         Ok(Index{version, items})
@@ -134,13 +146,13 @@ impl Index {
     }
 }
 
-fn read_u32(bytes: &Vec<u8>, pos: &mut usize) -> u32 {
+fn read_u32(bytes: &[u8], pos: &mut usize) -> u32 {
     let val = u32::from_be_bytes(bytes[*pos..(*pos+4)].try_into().unwrap());
     *pos += 4;
     val
 }
 
-fn read_hash(bytes: &Vec<u8>, pos: &mut usize) -> [u8; 20] {
+fn read_hash(bytes: &[u8], pos: &mut usize) -> [u8; 20] {
     let val: [u8; 20] = bytes[*pos..(*pos+20)].try_into().unwrap();
     *pos += 20;
     val
