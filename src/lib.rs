@@ -8,6 +8,7 @@ pub use crate::cat_file::{CatFileArgs, cmd_cat_file};
 pub use crate::hash_object::{HashObjectArgs, cmd_hash_object};
 pub use crate::init::cmd_init;
 pub use crate::log::{LogArgs, cmd_log};
+pub use crate::ls_files::{LsFilesArgs, cmd_ls_files};
 pub use crate::status::{StatusArgs, cmd_status};
 
 // END INTERFACE
@@ -19,6 +20,7 @@ mod hash_object;
 mod index;
 mod init;
 mod log;
+mod ls_files;
 mod status;
 
 use clap::Args;
@@ -44,6 +46,7 @@ pub enum Command {
     HashObject(HashObjectArgs),
     CatFile(CatFileArgs),
     Log(LogArgs),
+    LsFiles(LsFilesArgs),
     Checkout(CheckoutArgs),
     Status(StatusArgs)
 }

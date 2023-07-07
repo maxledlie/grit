@@ -1,0 +1,4 @@
+add hello.txt
+add goodbye.txt
+add child_folder/leaf.txt
+ls-files
