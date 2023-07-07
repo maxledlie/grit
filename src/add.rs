@@ -34,9 +34,17 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
         libc::stat(c_path.as_ptr(), &mut stat);
 
         item = IndexItem {
-            stat,
+            ctime: u32::try_from(stat.st_ctime).unwrap(),
+            ctime_nsec: u32::try_from(stat.st_ctime_nsec).unwrap(),
+            mtime: u32::try_from(stat.st_mtime).unwrap(),
+            mtime_nsec: u32::try_from(stat.st_mtime_nsec).unwrap(),
+            dev: u32::try_from(stat.st_dev).unwrap(),
+            ino: u32::try_from(stat.st_ino).unwrap(),
+            mode: u32::try_from(stat.st_mode).unwrap(),
+            uid: u32::try_from(stat.st_uid).unwrap(),
+            gid: u32::try_from(stat.st_gid).unwrap(),
+            size: u32::try_from(stat.st_size).unwrap(),
             hash: blob.hash(),
-            flags: 0,
             path
         }
     }

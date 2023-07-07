@@ -10,9 +10,17 @@ pub struct Index {
 }
 
 pub struct IndexItem {
-    pub stat: libc::stat,
+    pub ctime: u32,
+    pub ctime_nsec: u32,
+    pub mtime: u32,
+    pub mtime_nsec: u32,
+    pub dev: u32,
+    pub ino: u32,
+    pub mode: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub size: u32,
     pub hash: [u8; 20],
-    pub flags: u16,
     pub path: PathBuf
 }
 
@@ -22,24 +30,56 @@ fn corrupt() -> CmdError {
 
 impl Index {
     pub fn deserialize(bytes: Vec<u8>) -> Result<Index, CmdError> {
-        // Check the 4-byte signature
         let signature = String::from_utf8(bytes[..4].to_vec());
         if signature != Ok(String::from("DIRC")) {
             return Err(corrupt());
         }
-
-        let version_bytes: [u8; 4] = bytes[4..8].try_into().map_err(|_| corrupt())?;
-        let version = u32::from_be_bytes(version_bytes);
-
-        let num_entries_bytes: [u8; 4] = bytes[8..12].try_into().map_err(|_| corrupt())?;
-        let num_entries = u32::from_be_bytes(num_entries_bytes);
+        
+        let mut pos = 4;
+        let version = read_u32(&bytes, &mut pos);
+        let num_entries = read_u32(&bytes, &mut pos);
 
         let mut items = Vec::new();
-        for i in [..num_entries] {
+        for _ in [..num_entries] {
+            let ctime = read_u32(&bytes, &mut pos);
+            let ctime_nsec = read_u32(&bytes, &mut pos);
+            let mtime = read_u32(&bytes, &mut pos);
+            let mtime_nsec = read_u32(&bytes, &mut pos);
+            let dev = read_u32(&bytes, &mut pos);
+            let ino = read_u32(&bytes, &mut pos);
+            let mode = read_u32(&bytes, &mut pos);
+            let uid = read_u32(&bytes, &mut pos);
+            let gid = read_u32(&bytes, &mut pos);
+            let size = read_u32(&bytes, &mut pos);
+            let hash = read_hash(&bytes, &mut pos);
+
+            let flags = u16::from_be_bytes(bytes[pos..(pos+2)].try_into().unwrap());
+            pos += 2;
+
+            let path_len: usize = (0xFFF & flags).into();
+            let path_bytes = bytes[pos..(pos+path_len)].into();
+            let path = PathBuf::from(String::from_utf8_lossy(path_bytes).to_string());
+
+            let item = IndexItem {
+                ctime,
+                ctime_nsec,
+                mtime,
+                mtime_nsec,
+                dev,
+                ino,
+                mode,
+                uid,
+                gid,
+                size,
+                hash,
+                path
+            };
+            items.push(item);
         }
 
         Ok(Index{version, items})
     }
+    
 
     pub fn serialize(&self) -> Result<Vec<u8>, CmdError> {
         let mut bytes = Vec::<u8>::new();
@@ -55,16 +95,16 @@ impl Index {
         for item in &self.items {
             let mut entry_bytes = Vec::<u8>::new();
 
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_ctime).unwrap());
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_ctime_nsec).unwrap());
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_mtime).unwrap());
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_mtime_nsec).unwrap());
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_dev).unwrap());
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_ino).unwrap());
-            append_u32(&mut entry_bytes, item.stat.st_mode);
-            append_u32(&mut entry_bytes, item.stat.st_uid);
-            append_u32(&mut entry_bytes, item.stat.st_gid);
-            append_u32(&mut entry_bytes, u32::try_from(item.stat.st_size).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.ctime).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.ctime_nsec).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.mtime).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.mtime_nsec).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.dev).unwrap());
+            append_u32(&mut entry_bytes, u32::try_from(item.ino).unwrap());
+            append_u32(&mut entry_bytes, item.mode);
+            append_u32(&mut entry_bytes, item.uid);
+            append_u32(&mut entry_bytes, item.gid);
+            append_u32(&mut entry_bytes, u32::try_from(item.size).unwrap());
             entry_bytes.append(&mut item.hash.into());
 
             let path_str = item.path.to_string_lossy();
@@ -92,6 +132,18 @@ impl Index {
 
         Ok(bytes)
     }
+}
+
+fn read_u32(bytes: &Vec<u8>, pos: &mut usize) -> u32 {
+    let val = u32::from_be_bytes(bytes[*pos..(*pos+4)].try_into().unwrap());
+    *pos += 4;
+    val
+}
+
+fn read_hash(bytes: &Vec<u8>, pos: &mut usize) -> [u8; 20] {
+    let val: [u8; 20] = bytes[*pos..(*pos+20)].try_into().unwrap();
+    *pos += 20;
+    val
 }
 
 fn append_string(current: &mut Vec::<u8>, val: String) {

@@ -15,8 +15,24 @@ pub fn cmd_status(_args: StatusArgs, global_opts: GlobalOpts) -> Result<(), CmdE
         panic!("fatal: not a grit repository");
     });
 
+    // TODO: Handle different branches
+    println!("On branch master");
+    println!();
+
+    // TODO: Check log to determine if there have been commits
+    println!("No commits yet");
+    println!();
+
     let index_bytes = fs::read(root.join(".git/index")).map_err(CmdError::IOError)?;
-    let _index = Index::deserialize(index_bytes);
+    let index = Index::deserialize(index_bytes)?;
+
+    // Currently assuming all files are uncommitted.
+    // Once `commit` is implemented, only report files that are not in the HEAD tree
+    println!("Changes to be committed:");
+    println!("  (use \"git rm --cached <file>...\" to unstage)");
+    for item in index.items {
+        println!("\tnew file:   {}", item.path.to_string_lossy());
+    }
 
     Ok(())
 }
