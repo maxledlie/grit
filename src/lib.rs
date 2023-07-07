@@ -26,7 +26,6 @@ mod status;
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
-use std::fmt;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -63,20 +62,6 @@ enum ObjectType {
     Tree,
     Commit,
     Tag
-}
-
-pub enum CmdError {
-    IOError(std::io::Error),
-    Fatal(String)
-}
-
-impl fmt::Display for CmdError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CmdError::IOError(e) => write!(f, "{}", e.to_string()),
-            CmdError::Fatal(e) => write!(f, "{}", e)
-        }
-    }
 }
 
 // Returns the path to the root of the repository at the given path.

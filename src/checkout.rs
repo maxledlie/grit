@@ -1,8 +1,8 @@
 use std::{fs, path::PathBuf, env};
-
+use anyhow::{bail, Result};
 use clap::Args;
 
-use crate::{GlobalOpts, repo_find, CmdError};
+use crate::{GlobalOpts, repo_find};
 use crate::objects::{get_object, Commit, Object, search_object, parse_hash, Tree};
 
 #[derive(Args)]
@@ -13,13 +13,13 @@ pub struct CheckoutArgs {
     pub directory: String
 }
 
-pub fn cmd_checkout(args: CheckoutArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_checkout(args: CheckoutArgs, global_opts: GlobalOpts) -> Result<()> {
     // Fail if the given directory is not empty
     let destination = PathBuf::from(args.directory);
-    let contents = fs::read_dir(&destination).map_err(CmdError::IOError)?;
+    let contents = fs::read_dir(&destination)?;
     
     if contents.into_iter().count() > 0 {
-        return Err(CmdError::Fatal("Destination directory is not empty!".to_owned()));
+        bail!("Destination directory is not empty!");
     }
 
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
@@ -32,21 +32,21 @@ pub fn cmd_checkout(args: CheckoutArgs, global_opts: GlobalOpts) -> Result<(), C
     // Parse the given commit object
     match search_object(&root, &hash, global_opts.git_mode) {
         Ok(Some(Object::Commit(c))) => checkout_commit(&root, c, &destination, global_opts.git_mode),
-        Ok(Some(_)) => Err(CmdError::Fatal(String::from("Requested object is not a commit"))),
-        Ok(None) => Err(CmdError::Fatal(String::from("Commit object does not exist"))),
+        Ok(Some(_)) => bail!("Requested object is not a commit"),
+        Ok(None) => bail!("Commit object does not exist"),
         Err(e) => Err(e)
     }
 }
 
-fn checkout_commit(root: &PathBuf, commit: Commit, destination: &PathBuf, git_mode: bool) -> Result<(), CmdError> {
+fn checkout_commit(root: &PathBuf, commit: Commit, destination: &PathBuf, git_mode: bool) -> Result<()> {
     match get_object(root, &commit.tree, git_mode) {
         Ok(Object::Tree(t)) => checkout_tree(root, t, destination, git_mode),
-        Ok(_) => Err(CmdError::Fatal(String::from("Commit references a tree that is not actually a tree"))),
+        Ok(_) => bail!("Commit references a tree that is not actually a tree"),
         Err(e) => Err(e)
     }
 }
 
-fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bool) -> Result<(), CmdError> {
+fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bool) -> Result<()> {
     for leaf in tree.leaves.into_iter() {
         println!("Checking out following tree node...");
         println!("{}", leaf);
@@ -54,9 +54,9 @@ fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bo
         let output_path = destination.join(&leaf.path);
 
         match get_object(root, &leaf.hash, git_mode) {
-            Ok(Object::Blob(bytes)) => { fs::write(output_path, bytes).map_err(CmdError::IOError)?; },
+            Ok(Object::Blob(bytes)) => { fs::write(output_path, bytes)?; },
             Ok(Object::Tree(_)) => {}, // TODO: Recurse on the subtree
-            Ok(_) => return Err(CmdError::Fatal(String::from("Unexpected object found in tree. Expecting only blobs or trees"))),
+            Ok(_) => bail!("Unexpected object found in tree. Expecting only blobs or trees"),
             Err(e) => return Err(e)
         }
     }

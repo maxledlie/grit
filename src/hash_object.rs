@@ -1,7 +1,8 @@
-use std::{fs::{self}, env};
+use std::{fs, env};
+use anyhow::Result;
 use clap::{arg, Args};
 
-use crate::{GlobalOpts, CmdError, repo_find, objects::Blob};
+use crate::{GlobalOpts, repo_find, objects::Blob};
 
 #[derive(Args)]
 pub struct HashObjectArgs {
@@ -12,7 +13,7 @@ pub struct HashObjectArgs {
     pub write: bool,
 }
 
-pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_hash_object(args: HashObjectArgs, global_opts: GlobalOpts) -> Result<()> {
     // Read the file at the given path
     let Ok(content_bytes) = fs::read(&args.path) else { panic!() };
     

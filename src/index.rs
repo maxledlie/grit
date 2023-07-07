@@ -1,8 +1,6 @@
 use std::path::PathBuf;
-
+use anyhow::Result;
 use sha1::{Sha1, Digest};
-
-use crate::CmdError;
 
 pub struct Index {
     pub version: u32,
@@ -28,17 +26,9 @@ pub struct IndexItem {
     pub path: PathBuf
 }
 
-fn corrupt() -> CmdError {
-    CmdError::Fatal(String::from("Corrupt index"))
-}
-
 impl Index {
-    pub fn deserialize(bytes: Vec<u8>) -> Result<Index, CmdError> {
-        let signature = String::from_utf8(bytes[..4].to_vec());
-        if signature != Ok(String::from("DIRC")) {
-            return Err(corrupt());
-        }
-        
+    pub fn deserialize(bytes: Vec<u8>) -> Result<Index> {
+        let signature = String::from_utf8(bytes[..4].to_vec())?;
         let mut pos = 4;
         let version = read_u32(&bytes, &mut pos);
         let num_entries = read_u32(&bytes, &mut pos);
@@ -93,15 +83,13 @@ impl Index {
     }
     
 
-    pub fn serialize(&self) -> Result<Vec<u8>, CmdError> {
+    pub fn serialize(&self) -> Result<Vec<u8>> {
         let mut bytes = Vec::<u8>::new();
 
         append_string(&mut bytes, String::from("DIRC"));
         append_u32(&mut bytes, self.version.try_into().unwrap());
 
-        let num_entries = self.items.len()
-            .try_into()
-            .map_err(|_| CmdError::Fatal(String::from("You've staged > 4 billion files. Are you okay?")))?;
+        let num_entries = self.items.len().try_into()?;
         append_u32(&mut bytes, num_entries);
 
         for item in &self.items {

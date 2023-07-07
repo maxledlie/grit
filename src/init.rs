@@ -1,9 +1,9 @@
 use std::{path::{PathBuf, Path}, env, fs};
+use anyhow::Result;
+use crate::{GlobalOpts, git_dir_name, program_name};
 
-use crate::{GlobalOpts, CmdError, git_dir_name, program_name};
 
-
-pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<()> {
     let git_dir_name = git_dir_name(global_opts.clone());
 
     let git_dirs: Vec<PathBuf> = vec![
@@ -23,18 +23,18 @@ pub fn cmd_init(path: Option<String>, global_opts: GlobalOpts) -> Result<(), Cmd
     let gitdir = root.join(git_dir_name); 
     for p in git_dirs {
         let path = gitdir.join(&p);
-        fs::create_dir_all(&path).map_err(CmdError::IOError)?;
+        fs::create_dir_all(&path)?;
     }
 
     // Create default files
-    fs::write(gitdir.join("config"), repo_default_config()).map_err(CmdError::IOError)?;
-    fs::write(gitdir.join("description"), repo_default_description()).map_err(CmdError::IOError)?;
-    fs::write(gitdir.join("info/exclude"), repo_default_exclude()).map_err(CmdError::IOError)?;
+    fs::write(gitdir.join("config"), repo_default_config())?;
+    fs::write(gitdir.join("description"), repo_default_description())?;
+    fs::write(gitdir.join("info/exclude"), repo_default_exclude())?;
 
     // Create a HEAD file pointing to the master branch
     let head_path = gitdir.join("HEAD");
     let head_contents = "ref: refs/heads/master\n";
-    fs::write(head_path, head_contents).map_err(CmdError::IOError)?;
+    fs::write(head_path, head_contents)?;
 
     // Add trailing slash if a directory name to match Git
     let mut gitdir_str: String = gitdir.to_string_lossy().into();

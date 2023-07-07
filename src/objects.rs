@@ -1,12 +1,12 @@
 // This module should encapsulate knowledge about how objects are represented in Git.
 // Callers should only need to know that objects are identified by a hash.
 
-use std::{path::PathBuf, fs::{self, File}, io::{Read, Write}, collections::HashMap, fmt};
-
+use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt};
+use anyhow::{anyhow, bail, Result};
 use flate2::{bufread::ZlibDecoder, write::ZlibEncoder, Compression};
 use sha1::{Sha1, Digest};
 
-use crate::{CmdError, git_dir_name, GlobalOpts};
+use crate::{git_dir_name, GlobalOpts};
 
 pub enum Object {
     Blob(Vec<u8>),
@@ -61,7 +61,7 @@ impl Blob {
         })
     }
 
-    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<(), CmdError> {
+    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<()> {
         let hash = self.hash();
         let compressed_bytes = self.compress();
 
@@ -78,7 +78,7 @@ impl Blob {
             File::create(dir.join(file_name))
         }).and_then(|mut f| {
             f.write_all(&compressed_bytes)
-        }).map_err(CmdError::IOError)?;
+        })?;
 
         Ok(())
     }
@@ -140,19 +140,20 @@ impl fmt::Display for GitTreeLeaf {
 }
 
 /// Attempts to interpret the given string as a 20-byte SHA1 hash
-pub fn parse_hash(hash: &String) -> Result<[u8; 20], CmdError> {
-    let bytes = hex::decode(hash).map_err(|e| CmdError::Fatal(e.to_string()))?;
-    Ok(bytes.try_into().map_err(|_| CmdError::Fatal(String::from("invalid hash")))?)
+pub fn parse_hash(hash: &String) -> Result<[u8; 20]> {
+    let bytes = hex::decode(hash)?;
+    let result: [u8; 20] = bytes.as_slice().try_into()?;
+    Ok(result)
 }
 
-pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Option<Object>, CmdError> {
+pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Option<Object>> {
     match read_object_raw(root, hash, git_mode) {
         Ok(Some(bytes)) => {
             let type_end = bytes.iter().position(|x| x == &b' ')
-                .ok_or(CmdError::Fatal(String::from("error parsing object: `type` field not terminated")))?;
+                .ok_or(anyhow!("error parsing object: `type` field not terminated"))?;
 
             let file_size_end = (type_end + 1) + bytes[type_end+1..].iter().position(|x| x == &0)
-                .ok_or(CmdError::Fatal(String::from("error parsing object: `size` field not terminated")))?;
+                .ok_or(anyhow!("error parsing object: `size` field not terminated"))?;
 
             let object_type = &bytes[..type_end];
             let _file_size = &bytes[type_end+1..file_size_end];
@@ -173,7 +174,7 @@ pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<
                         Err(e) => Err(e)
                     }
                 }
-                _ => Err(CmdError::Fatal(format!("unrecognised object type")))
+                _ => bail!("unrecognised object type")
             }
         },
         Ok(None) => Ok(None),
@@ -183,10 +184,10 @@ pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<
 
 /// Retrieves the object with the given hash from the store, or an Err if it doesn't exist.
 /// Use this when the object is referenced by a different object, so it's absence suggests the store is corrupted.
-pub fn get_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Object, CmdError> {
+pub fn get_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Object> {
     match search_object(root, hash, git_mode) {
         Ok(Some(x)) => Ok(x),
-        Ok(None) => Err(CmdError::Fatal(format!("Object {} not found in store", String::from_utf8_lossy(hash)))),
+        Ok(None) => bail!("Object {} not found in store", String::from_utf8_lossy(hash)),
         Err(e) => Err(e)
     }
 }
@@ -194,7 +195,7 @@ pub fn get_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Obj
 
 // Returns the decompressed contents of the object with the given hash, or None
 // if the object does not exist, or an error if the object exists but decompression fails
-pub fn read_object_raw(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Option<Vec<u8>>, CmdError> {
+pub fn read_object_raw(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<Option<Vec<u8>>> {
     if hash.len() < 3 {
         return Ok(None);
     }
@@ -215,11 +216,11 @@ pub fn read_object_raw(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Resul
     }
 
     // Read and decompress the requested file
-    let bytes = fs::read(full_path).map_err(CmdError::IOError)?;
+    let bytes = fs::read(full_path)?;
     let mut z = ZlibDecoder::new(&bytes[..]);
     
     let mut buf = Vec::<u8>::new();
-    z.read_to_end(&mut buf).map_err(CmdError::IOError)?;
+    z.read_to_end(&mut buf)?;
 
     Ok(Some(buf))
 }
@@ -232,7 +233,7 @@ enum ParseState {
     InMessage
 }
 
-pub fn parse_commit(commit_text: &String) -> Result<Commit, CmdError> {
+pub fn parse_commit(commit_text: &String) -> Result<Commit> {
     let mut buffer = String::from("");
     let mut current_key: Option<String> = Some(String::from(""));
     let mut state = ParseState::InKey;
@@ -266,12 +267,8 @@ pub fn parse_commit(commit_text: &String) -> Result<Commit, CmdError> {
             },
             ParseState::BeforeValue => {
                 match c {
-                    '\n' => {
-                        return Err(CmdError::Fatal(String::from("unexpected new line in commit text")));
-                    },
-                    c if c.is_whitespace() => {
-                        continue;
-                    },
+                    '\n' => bail!("unexpected new line in commit text"),
+                    c if c.is_whitespace() => continue,
                     c => {
                         buffer.clear();
                         buffer.push(c);
@@ -287,7 +284,7 @@ pub fn parse_commit(commit_text: &String) -> Result<Commit, CmdError> {
                             tags.insert(key.to_string(), buffer.clone());
                             state = ParseState::BeforeKey;
                         } else {
-                            return Err(CmdError::Fatal(String::from("invalid commit text")));
+                            bail!("invalid commit text");
                         }
                     },
                     _ => {
@@ -321,7 +318,7 @@ pub fn parse_commit(commit_text: &String) -> Result<Commit, CmdError> {
     })
 }
 
-fn parse_tree(bytes: &[u8]) -> Result<Tree, CmdError> {
+fn parse_tree(bytes: &[u8]) -> Result<Tree> {
     let mut nodes = Vec::new();
     let mut pos: usize = 0;
     let max = bytes.len();
@@ -334,28 +331,28 @@ fn parse_tree(bytes: &[u8]) -> Result<Tree, CmdError> {
     Ok(Tree { leaves: nodes })
 }
 
-fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf, CmdError> {
+fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf> {
     let remainder = &bytes[*pos..];
 
     // Find the space that terminates the file mode
     let mode_end = remainder.iter().position(|x| x == &b' ')
-        .ok_or(CmdError::Fatal(String::from(
+        .ok_or(anyhow!(
             "error parsing tree: missing space terminator for file mode"
-        )))?;
+        ))?;
 
     // Read the mode
     let mode = remainder[..mode_end].to_vec();
 
     // Find the NULL terminator of the path
     let path_end = remainder.iter().position(|x| x == &0)
-        .ok_or(CmdError::Fatal(String::from(
+        .ok_or(anyhow!(
             "error parsing tree: missing NULL terminator for path"
-        )))?;
+        ))?;
 
     let path_str = String::from_utf8(remainder[mode_end+1..path_end].to_vec())
-        .map_err(|_| CmdError::Fatal(String::from(
+        .map_err(|_| anyhow!( 
             "error parsing tree: non-UTF8 character in path"
-        )))?;
+        ))?;
     let path = PathBuf::from(path_str);
     let hash: [u8; 20] = remainder[path_end+1..path_end+21].try_into().expect("array of incorrect length");
 

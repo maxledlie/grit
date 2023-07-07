@@ -1,8 +1,8 @@
 use std::env;
-
+use anyhow::{anyhow, Result};
 use clap::Args;
 
-use crate::{GlobalOpts, repo_find, objects::{parse_hash, parse_commit, Commit, read_object_raw}, CmdError};
+use crate::{GlobalOpts, repo_find, objects::{parse_hash, parse_commit, Commit, read_object_raw}};
 
 
 #[derive(Args)]
@@ -10,7 +10,7 @@ pub struct LogArgs {
     commit_hash: String,
 }
 
-pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<()> {
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
@@ -27,7 +27,7 @@ pub fn cmd_log(args: LogArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
                 // TODO: Handle multiple parents due to merges
                 current_hash = commit.parent;
             },
-            Ok(None) => { return Err(CmdError::Fatal(format!("object {} not found in store", args.commit_hash))); },
+            Ok(None) => { return Err(anyhow!("object {} not found in store", args.commit_hash)); },
             Err(e) => { return Err(e) }
         }
     }

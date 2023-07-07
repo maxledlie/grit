@@ -1,8 +1,8 @@
 use std::env;
-
+use anyhow::{bail, Result};
 use clap::Args;
 
-use crate::{ObjectType, GlobalOpts, CmdError, repo_find};
+use crate::{ObjectType, GlobalOpts, repo_find};
 use crate::objects::{Object, search_object};
 
 
@@ -13,17 +13,17 @@ pub struct CatFileArgs {
     object: String,
 }
 
-pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), CmdError>{
+pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<()>{
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
     });
 
-    let hash_bytes = hex::decode(&args.object).map_err(|_| CmdError::Fatal(String::from("invalid object hash")))?;
+    let hash_bytes = hex::decode(&args.object)?;
     let hash: [u8; 20] = hash_bytes.try_into().expect("invalid object hash");
 
     let object = match search_object(&root, &hash, global_opts.git_mode) {
-        Ok(None) => return Err(CmdError::Fatal(format!("object {} not found in store", args.object))),
+        Ok(None) => bail!("object {} not found in store", args.object),
         Err(e) => return Err(e),
         Ok(Some(x)) => x
     };
@@ -36,8 +36,7 @@ pub fn cmd_cat_file(args: CatFileArgs, global_opts: GlobalOpts) -> Result<(), Cm
         (Object::Tag, ObjectType::Tag) => (),
         _ => {
             let hash_str = hex::encode(&hash);
-            let msg = format!("fatal: git cat-file {}: bad file", hash_str);
-            return Err(CmdError::Fatal(msg)); 
+            bail!("fatal: git cat-file {}: bad file", hash_str);
         }
     }
 

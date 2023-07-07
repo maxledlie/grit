@@ -1,8 +1,8 @@
 use std::{fs, env, ffi::CString, mem, path::PathBuf};
-
+use anyhow::Result;
 use clap::{arg, Args};
 
-use crate::{GlobalOpts, CmdError, index::{Index, IndexItem}, repo_find, git_dir_name, objects::Blob};
+use crate::{GlobalOpts, index::{Index, IndexItem}, repo_find, git_dir_name, objects::Blob};
 
 #[derive(Args)]
 pub struct AddArgs {
@@ -11,7 +11,7 @@ pub struct AddArgs {
     pathspec: String,
 }
 
-pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
+pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
     let cwd = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&cwd, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a {} repository", git_dir_name(global_opts));
@@ -21,14 +21,14 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
 
     // Hash the object and write it to the store
     let path = PathBuf::from(args.pathspec);
-    let bytes = fs::read(&path).map_err(CmdError::IOError)?;
+    let bytes = fs::read(&path)?;
     let blob = Blob { bytes };
     blob.write(&root, global_opts)?;
 
     let item: IndexItem;
 
     // Get status information on the file by calling the C standard library
-    let c_path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| CmdError::Fatal(String::from("Could not interpret path as CString")))?;
+    let c_path = CString::new(path.to_string_lossy().as_bytes())?;
     unsafe {
         let mut stat: libc::stat = mem::zeroed();
         libc::stat(c_path.as_ptr(), &mut stat);
@@ -52,7 +52,7 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     let mut index: Index;
     if index_path.exists() {
-        let index_bytes = fs::read(root.join(".git/index")).map_err(CmdError::IOError)?;
+        let index_bytes = fs::read(root.join(".git/index"))?;
         index = Index::deserialize(index_bytes)?;
 
         // Find position to insert this item in that will preserve ordering by path name
@@ -74,7 +74,7 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<(), CmdError> {
     }
 
     let index_bytes = index.serialize()?;
-    fs::write(index_path, index_bytes).map_err(CmdError::IOError)?;
+    fs::write(index_path, index_bytes)?;
 
     Ok(())
 }
