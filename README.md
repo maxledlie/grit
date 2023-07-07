@@ -6,4 +6,5 @@ A subset of Git written in Rust.
 - [x] hash-object
 - [x] cat-file
 - [x] log (kinda)
-- [ ] add
+- [x] add (one file at a time)
+- [ ] commit
