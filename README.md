@@ -7,4 +7,5 @@ A subset of Git written in Rust.
 - [x] cat-file
 - [x] log (kinda)
 - [x] add (one file at a time)
+- [x] ls-files
 - [ ] commit
