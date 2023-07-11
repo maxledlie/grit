@@ -28,7 +28,7 @@ pub struct IndexItem {
 
 impl Index {
     pub fn deserialize(bytes: Vec<u8>) -> Result<Index> {
-        let signature = String::from_utf8(bytes[..4].to_vec())?;
+        let _signature = String::from_utf8(bytes[..4].to_vec())?;
         let mut pos = 4;
         let version = read_u32(&bytes, &mut pos);
         let num_entries = read_u32(&bytes, &mut pos);
