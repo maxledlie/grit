@@ -112,6 +112,13 @@ pub struct Tree {
     pub leaves: Vec<GitTreeLeaf>
 }
 
+impl Tree {
+    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<()> {
+
+        Ok(())
+    }
+}
+
 impl fmt::Display for Tree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for leaf in &self.leaves {

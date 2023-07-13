@@ -5,6 +5,7 @@ pub mod objects;
 pub use crate::add::{AddArgs, cmd_add};
 pub use crate::checkout::{CheckoutArgs, cmd_checkout};
 pub use crate::cat_file::{CatFileArgs, cmd_cat_file};
+pub use crate::commit::{CommitArgs, cmd_commit};
 pub use crate::hash_object::{HashObjectArgs, cmd_hash_object};
 pub use crate::init::cmd_init;
 pub use crate::log::{LogArgs, cmd_log};
@@ -16,6 +17,7 @@ pub use crate::status::{StatusArgs, cmd_status};
 mod add;
 mod cat_file;
 mod checkout;
+mod commit;
 mod hash_object;
 mod index;
 mod init;
@@ -44,9 +46,10 @@ pub enum Command {
     Init { path: Option<String> },
     HashObject(HashObjectArgs),
     CatFile(CatFileArgs),
+    Checkout(CheckoutArgs),
+    Commit(CommitArgs),
     Log(LogArgs),
     LsFiles(LsFilesArgs),
-    Checkout(CheckoutArgs),
     Status(StatusArgs)
 }
 

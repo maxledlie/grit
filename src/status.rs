@@ -28,7 +28,7 @@ pub fn cmd_status(_args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
     let mut staged = Vec::new();
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     if index_path.exists() {
-        let index_bytes = fs::read(root.join(".git/index"))?;
+        let index_bytes = fs::read(index_path)?;
         let index = Index::deserialize(index_bytes)?;
         for item in &index.items {
             staged.push(item.path.to_string_lossy().to_string());
