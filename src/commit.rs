@@ -3,7 +3,7 @@ use std::{env, fs};
 use anyhow::Result;
 use clap::Args;
 
-use crate::{GlobalOpts, objects::Tree, repo_find, git_dir_name, index::Index, cmd_status, StatusArgs};
+use crate::{GlobalOpts, repo_find, git_dir_name, index::Index, cmd_status, StatusArgs};
 
 
 #[derive(Args)]
@@ -27,11 +27,6 @@ pub fn cmd_commit(args: CommitArgs, global_opts: GlobalOpts) -> Result<()> {
             staged.push(item.path.to_string_lossy().to_string());
         }
     }
-
-    // Write the current tree to the object store
-    let tree = Tree {
-        leaves: Vec::new()
-    };
 
     // If nothing is staged, run `status` instead to prompt the user to `add` files
     if staged.len() == 0 {

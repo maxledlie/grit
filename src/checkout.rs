@@ -47,9 +47,9 @@ fn checkout_commit(root: &PathBuf, commit: Commit, destination: &PathBuf, git_mo
 }
 
 fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bool) -> Result<()> {
-    for leaf in tree.leaves.into_iter() {
+    for leaf in tree.children.into_iter() {
         println!("Checking out following tree node...");
-        println!("{}", leaf);
+        // println!("{}", leaf);
 
         let output_path = destination.join(&leaf.path);
 

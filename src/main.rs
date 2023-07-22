@@ -10,7 +10,8 @@ use grit::{Cli,
     cmd_commit,
     cmd_log,
     cmd_ls_files,
-    cmd_status
+    cmd_status,
+    cmd_write_tree
 };
 
 fn main() {
@@ -26,7 +27,8 @@ fn main() {
         Command::Commit(args) => cmd_commit(args, global_opts),
         Command::Log(args) => cmd_log(args, global_opts),
         Command::LsFiles(args) => cmd_ls_files(args, global_opts),
-        Command::Status(args) => cmd_status(args, global_opts)
+        Command::Status(args) => cmd_status(args, global_opts),
+        Command::WriteTree => cmd_write_tree(global_opts)
     };
 
     if let Some(err) = result.err() {

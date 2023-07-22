@@ -11,6 +11,7 @@ pub use crate::init::cmd_init;
 pub use crate::log::{LogArgs, cmd_log};
 pub use crate::ls_files::{LsFilesArgs, cmd_ls_files};
 pub use crate::status::{StatusArgs, cmd_status};
+pub use crate::write_tree::cmd_write_tree;
 
 // END INTERFACE
 
@@ -24,6 +25,7 @@ mod init;
 mod log;
 mod ls_files;
 mod status;
+mod write_tree;
 
 use clap::Args;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -50,7 +52,8 @@ pub enum Command {
     Commit(CommitArgs),
     Log(LogArgs),
     LsFiles(LsFilesArgs),
-    Status(StatusArgs)
+    Status(StatusArgs),
+    WriteTree
 }
 
 #[derive(Args, Clone, Copy)]

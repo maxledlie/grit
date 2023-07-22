@@ -1,0 +1,5 @@
+add goodbye.txt
+add hello.txt
+add child/foo.txt
+add child/grandchild/foo.txt
+write-tree

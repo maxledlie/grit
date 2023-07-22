@@ -1,7 +1,7 @@
 // This module should encapsulate knowledge about how objects are represented in Git.
 // Callers should only need to know that objects are identified by a hash.
 
-use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt};
+use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt, os::unix::prelude::OsStrExt};
 use anyhow::{anyhow, bail, Result};
 use flate2::{bufread::ZlibDecoder, write::ZlibEncoder, Compression};
 use sha1::{Sha1, Digest};
@@ -20,7 +20,7 @@ impl fmt::Display for Object {
         match self {
             Object::Blob(bytes) => write!(f, "{}", String::from_utf8_lossy(&bytes)),
             Object::Commit(c) => write!(f, "{}", c),
-            Object::Tree(t) => write!(f, "{}", t),
+            Object::Tree(_) => write!(f, "TODO: IMPL DISPLAY FOR TREE"),
             Object::Tag => write!(f, "TODO: IMPL DISPLAY FOR TAG")
         }
     }
@@ -108,42 +108,55 @@ impl fmt::Display for Commit {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Tree {
-    pub leaves: Vec<GitTreeLeaf>
+    pub children: Vec<TreeEntry>
 }
 
 impl Tree {
-    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<()> {
+    // This is probably generic to all objects
+    pub fn hash(&self) -> [u8; 20] {
+        let content = self.content();
 
-        Ok(())
+        let mut hasher: Sha1 = Sha1::new();
+        // Prepend header: the file type and size
+        let header_str = String::from("tree ") + &content.len().to_string() + "\0";
+        let header_bytes = header_str.as_bytes();
+
+        let bytes = [header_bytes, &content].concat();
+
+        hasher.update(&bytes);
+        hasher.finalize().into()
+
     }
-}
 
-impl fmt::Display for Tree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for leaf in &self.leaves {
-            writeln!(f, "{}", leaf)?;
+    pub fn content(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for child in &self.children {
+            // Convert mode from integer to ASCII bytes
+            let mut mode = child.mode.to_string().as_bytes().to_vec();
+            let mut path = child.path.as_os_str().as_bytes().to_vec();
+            let mut hash = child.hash.to_vec();
+
+            bytes.append(&mut mode);
+            bytes.push(b' ');
+            bytes.append(&mut path);
+            bytes.push(b'\0');
+            bytes.append(&mut hash);
         }
-        Ok(())
+
+        bytes
     }
 }
 
-
-pub struct GitTreeLeaf {
+#[derive(Clone, Debug)]
+pub struct TreeEntry {
     /// The unix file mode
-    pub mode: Vec<u8>,
+    pub mode: u32,
     /// The path to the file
     pub path: PathBuf,
     /// The SHA1 hash of the file contents
     pub hash: [u8; 20]
-}
-
-impl fmt::Display for GitTreeLeaf {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mode = String::from_utf8_lossy(&self.mode);
-        let hash = hex::encode(&self.hash);
-        write!(f, "{} {} {}", mode, hash, &self.path.to_string_lossy())
-    }
 }
 
 /// Attempts to interpret the given string as a 20-byte SHA1 hash
@@ -335,10 +348,10 @@ fn parse_tree(bytes: &[u8]) -> Result<Tree> {
         nodes.push(node);
     }
 
-    Ok(Tree { leaves: nodes })
+    Ok(Tree { children: nodes })
 }
 
-fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf> {
+fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<TreeEntry> {
     let remainder = &bytes[*pos..];
 
     // Find the space that terminates the file mode
@@ -348,7 +361,7 @@ fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf> {
         ))?;
 
     // Read the mode
-    let mode = remainder[..mode_end].to_vec();
+    let mode = u32::from_be_bytes(remainder[..mode_end].try_into().unwrap());
 
     // Find the NULL terminator of the path
     let path_end = remainder.iter().position(|x| x == &0)
@@ -365,7 +378,7 @@ fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<GitTreeLeaf> {
 
     *pos += path_end + 21;
 
-    Ok(GitTreeLeaf {
+    Ok(TreeEntry {
         mode,
         path,
         hash
