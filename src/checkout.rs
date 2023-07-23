@@ -54,7 +54,7 @@ fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bo
         let output_path = destination.join(&leaf.path);
 
         match get_object(root, &leaf.hash, git_mode) {
-            Ok(Object::Blob(bytes)) => { fs::write(output_path, bytes)?; },
+            Ok(Object::Blob(b)) => { fs::write(output_path, b.bytes)?; },
             Ok(Object::Tree(_)) => {}, // TODO: Recurse on the subtree
             Ok(_) => bail!("Unexpected object found in tree. Expecting only blobs or trees"),
             Err(e) => return Err(e)

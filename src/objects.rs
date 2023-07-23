@@ -1,6 +1,3 @@
-// This module should encapsulate knowledge about how objects are represented in Git.
-// Callers should only need to know that objects are identified by a hash.
-
 use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt, os::unix::prelude::OsStrExt};
 use anyhow::{anyhow, bail, Result};
 use flate2::{bufread::ZlibDecoder, write::ZlibEncoder, Compression};
@@ -8,62 +5,37 @@ use sha1::{Sha1, Digest};
 
 use crate::{git_dir_name, GlobalOpts};
 
-pub enum Object {
-    Blob(Vec<u8>),
-    Commit(Commit),
-    Tree(Tree),
-    Tag
-}
+// All object types implement this trait which provides common functionality.
+// All objects can be hashed, compressed, and written to the object store.
+pub trait GitObject {
+    fn type_name(&self) -> String;
+    fn content_bytes(&self) -> Vec<u8>;
 
-impl fmt::Display for Object {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Object::Blob(bytes) => write!(f, "{}", String::from_utf8_lossy(&bytes)),
-            Object::Commit(c) => write!(f, "{}", c),
-            Object::Tree(_) => write!(f, "TODO: IMPL DISPLAY FOR TREE"),
-            Object::Tag => write!(f, "TODO: IMPL DISPLAY FOR TAG")
-        }
-    }
-}
-
-pub struct Blob {
-    pub bytes: Vec<u8>
-}
-
-impl Blob {
-    pub fn hash(&self) -> [u8; 20] {
-        let mut hasher: Sha1 = Sha1::new();
-        // Prepend header: the file type and size
-        let header_str = String::from("blob ") + &self.bytes.len().to_string() + "\0";
+    fn content_with_header(&self) -> Vec<u8> {
+        let content = self.content_bytes();
+        let header_str = self.type_name() + " " + &self.content_bytes().len().to_string() + "\0";
         let header_bytes = header_str.as_bytes();
+        let bytes = [header_bytes, &content].concat();
+        bytes
+    }
 
-        let bytes = [header_bytes, &self.bytes].concat();
+    fn compress(&self) -> Result<Vec<u8>> {
+        let bytes = self.content_with_header();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&bytes).map_err(|_| anyhow!("Object compression failed"))?;
+        encoder.finish().map_err(|_| anyhow!("Object compression failed"))
+    }
 
+    fn hash(&self) -> [u8; 20] {
+        let bytes = self.content_with_header();
+        let mut hasher: Sha1 = Sha1::new();
         hasher.update(&bytes);
         hasher.finalize().into()
     }
 
-    pub fn compress(&self) -> Vec<u8> {
-        // Prepend header: the file type and size
-        let header_str = String::from("blob ") + &self.bytes.len().to_string() + "\0";
-        let header_bytes = header_str.as_bytes();
-
-        let bytes = [header_bytes, &self.bytes].concat();
-
-        // Compress the file contents.
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
-        encoder.write_all(&bytes).unwrap_or_else(|e| {
-            panic!("Compression of object failed: {e}");
-        });
-
-        encoder.finish().unwrap_or_else(|e| {
-            panic!("Compression of object failed: {e}");
-        })
-    }
-
-    pub fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<()> {
+    fn write(&self, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<()> {
         let hash = self.hash();
-        let compressed_bytes = self.compress();
+        let compressed_bytes = self.compress()?;
 
         // The first two characters of the SHA1 hash are used to name a directory. The remaining 14 name the file within
         // that directory. This is just for practical reasons, because most operating systems slow down on directories
@@ -84,6 +56,23 @@ impl Blob {
     }
 }
 
+
+
+
+pub struct Blob {
+    pub bytes: Vec<u8>
+}
+
+impl GitObject for Blob {
+    fn type_name(&self) -> String {
+        String::from("blob")
+    }
+    fn content_bytes(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
+}
+
+
 pub struct Commit {
     /// The SHA1 hash of the tree describing the directory contents at this commit
     pub tree: [u8; 20],
@@ -93,6 +82,16 @@ pub struct Commit {
     /// The SHA1 hash of the commit's parent if it has one
     pub parent: Option<[u8; 20]>,
     pub message: String,
+}
+
+impl GitObject for Commit {
+    fn type_name(&self) -> String {
+        String::from("commit")
+    }
+    fn content_bytes(&self) -> Vec<u8> {
+        // TODO
+        vec![0]
+    }
 }
 
 impl fmt::Display for Commit {
@@ -108,29 +107,27 @@ impl fmt::Display for Commit {
     }
 }
 
+
 #[derive(Clone, Debug)]
 pub struct Tree {
     pub children: Vec<TreeEntry>
 }
 
-impl Tree {
-    // This is probably generic to all objects
-    pub fn hash(&self) -> [u8; 20] {
-        let content = self.content();
+#[derive(Clone, Debug)]
+pub struct TreeEntry {
+    /// The unix file mode
+    pub mode: u32,
+    /// The path to the file
+    pub path: PathBuf,
+    /// The SHA1 hash of the file contents
+    pub hash: [u8; 20]
+}
 
-        let mut hasher: Sha1 = Sha1::new();
-        // Prepend header: the file type and size
-        let header_str = String::from("tree ") + &content.len().to_string() + "\0";
-        let header_bytes = header_str.as_bytes();
-
-        let bytes = [header_bytes, &content].concat();
-
-        hasher.update(&bytes);
-        hasher.finalize().into()
-
+impl GitObject for Tree {
+    fn type_name(&self) -> String {
+        String::from("tree")
     }
-
-    pub fn content(&self) -> Vec<u8> {
+    fn content_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         for child in &self.children {
             // Convert mode from integer to ASCII bytes
@@ -149,14 +146,47 @@ impl Tree {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TreeEntry {
-    /// The unix file mode
-    pub mode: u32,
-    /// The path to the file
-    pub path: PathBuf,
-    /// The SHA1 hash of the file contents
-    pub hash: [u8; 20]
+
+pub struct Tag {
+    name: String
+}
+
+impl GitObject for Tag {
+    fn type_name(&self) -> String {
+        String::from("tag")
+    }
+    fn content_bytes(&self) -> Vec<u8> {
+        self.name.as_bytes().to_vec()
+    }
+}
+
+
+// To pass around an object of unknown type, use this enum.
+pub enum Object {
+    Blob(Blob),
+    Commit(Commit),
+    Tree(Tree),
+    Tag(Tag)
+}
+
+impl GitObject for Object {
+    fn type_name(&self) -> String {
+        match self {
+            Object::Blob(x) => x.type_name(),
+            Object::Commit(x) => x.type_name(),
+            Object::Tree(x) => x.type_name(),
+            Object::Tag(x) => x.type_name(),
+        }
+    }
+
+    fn content_bytes(&self) -> Vec<u8> {
+        match self {
+            Object::Blob(x) => x.content_bytes(),
+            Object::Commit(x) => x.content_bytes(),
+            Object::Tree(x) => x.content_bytes(),
+            Object::Tag(x) => x.content_bytes(),
+        }
+    }
 }
 
 /// Attempts to interpret the given string as a 20-byte SHA1 hash
@@ -180,14 +210,14 @@ pub fn search_object(root: &PathBuf, hash: &[u8; 20], git_mode: bool) -> Result<
             let contents = &bytes[file_size_end+1..];
 
             match object_type {
-                b"blob" => Ok(Some(Object::Blob(contents.to_vec()))),
+                b"blob" => Ok(Some(Object::Blob(Blob { bytes: contents.to_vec() }))),
                 b"tree" => {
                     match parse_tree(contents) {
                         Ok(t) => Ok(Some(Object::Tree(t))),
                         Err(e) => Err(e)
                     }
                 }
-                b"tag" => Ok(Some(Object::Tag)),
+                b"tag" => Ok(Some(Object::Tag(Tag { name: String::from("TODO: Read name")}))),
                 b"commit" => {
                     match parse_commit(&String::from_utf8_lossy(&contents).to_string()) {
                         Ok(c) => Ok(Some(Object::Commit(c))),

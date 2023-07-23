@@ -2,7 +2,7 @@ use std::{fs, env};
 use anyhow::Result;
 use clap::{arg, Args};
 
-use crate::{GlobalOpts, repo_find, objects::Blob};
+use crate::{GlobalOpts, repo_find, objects::{Blob, GitObject}};
 
 #[derive(Args)]
 pub struct HashObjectArgs {

@@ -2,7 +2,7 @@ use std::{fs, env, ffi::CString, mem, path::PathBuf};
 use anyhow::Result;
 use clap::{arg, Args};
 
-use crate::{GlobalOpts, index::{Index, IndexItem}, repo_find, git_dir_name, objects::Blob};
+use crate::{GlobalOpts, index::{Index, IndexItem}, repo_find, git_dir_name, objects::{Blob, GitObject}};
 
 #[derive(Args)]
 pub struct AddArgs {

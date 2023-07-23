@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
 use anyhow::Result;
-use crate::{GlobalOpts, index::{Index, IndexItem}, objects::{Tree, TreeEntry}, repo_find, git_dir_name};
+use crate::{GlobalOpts, index::{Index, IndexItem}, objects::{GitObject, Tree, TreeEntry}, repo_find, git_dir_name};
 
 
 pub fn cmd_write_tree(global_opts: GlobalOpts) -> Result<()> {

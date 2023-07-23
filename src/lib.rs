@@ -63,7 +63,7 @@ pub struct GlobalOpts {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, ValueEnum)]
-enum ObjectType {
+enum ObjectTypeExternal {
     Blob,
     Tree,
     Commit,
