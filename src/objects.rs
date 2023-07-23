@@ -23,7 +23,8 @@ pub trait GitObject {
         let bytes = self.content_with_header();
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
         encoder.write_all(&bytes).map_err(|_| anyhow!("Object compression failed"))?;
-        encoder.finish().map_err(|_| anyhow!("Object compression failed"))
+        let compressed_bytes = encoder.finish().map_err(|_| anyhow!("Object compression failed"))?;
+        Ok(compressed_bytes)
     }
 
     fn hash(&self) -> [u8; 20] {
@@ -130,8 +131,9 @@ impl GitObject for Tree {
     fn content_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         for child in &self.children {
-            // Convert mode from integer to ASCII bytes
-            let mut mode = child.mode.to_string().as_bytes().to_vec();
+            // Convert mode from integer to an ASCII representation of the octal value
+            let mode_str = format!("{:o}", child.mode);
+            let mut mode = mode_str.as_bytes().to_vec();
             let mut path = child.path.as_os_str().as_bytes().to_vec();
             let mut hash = child.hash.to_vec();
 

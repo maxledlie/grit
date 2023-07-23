@@ -14,13 +14,13 @@ pub fn cmd_write_tree(global_opts: GlobalOpts) -> Result<()> {
     let index_bytes = fs::read(index_path)?;
     let index = Index::deserialize(index_bytes)?;
 
-    let tree = write_tree(index);
+    let tree = write_tree(index, &root, global_opts)?;
     println!("{}", hex::encode(tree.hash()));
     Ok(())
 }
 
 
-pub fn write_tree(index: Index) -> Tree {
+pub fn write_tree(index: Index, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<Tree> {
     /*
     Creates a tree object using the current index. The name of the new tree object is printed to standard output.
     The index must be in a fully merged state.
@@ -28,11 +28,11 @@ pub fn write_tree(index: Index) -> Tree {
     In order to have that match what is actually in your directory right now, you need to have done a git update-index
     phase before you did the git write-tree.
     */
-    write_subtree(0, &index.items)
+    write_subtree(0, &index.items, repo_root, global_opts)
 }
 
 
-fn write_subtree(depth: usize, index: &[IndexItem]) -> Tree {
+fn write_subtree(depth: usize, index: &[IndexItem], repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<Tree> {
     let mut children = Vec::new();
     let mut pos = 0;
     while pos < index.len() {
@@ -55,7 +55,7 @@ fn write_subtree(depth: usize, index: &[IndexItem]) -> Tree {
                 &index[pos..]
             };
             
-            let subtree = write_subtree(depth + 1, subtree_items);
+            let subtree = write_subtree(depth + 1, subtree_items, repo_root, global_opts)?;
             children.push(TreeEntry {
                 mode: 40000,
                 path: subtree_path.clone(),
@@ -66,5 +66,8 @@ fn write_subtree(depth: usize, index: &[IndexItem]) -> Tree {
         }
     }
 
-    Tree { children }
+    let tree = Tree { children };
+    tree.write(repo_root, global_opts)?;
+
+    Ok(tree)
 }
