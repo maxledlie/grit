@@ -1,6 +1,6 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::{PathBuf, Path}};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use crate::{GlobalOpts, index::{Index, IndexItem}, objects::{GitObject, Tree, TreeEntry}, repo_find, git_dir_name};
 
 
@@ -37,11 +37,11 @@ fn write_subtree(depth: usize, index: &[IndexItem], repo_root: &PathBuf, global_
     let mut pos = 0;
     while pos < index.len() {
         let first = &index[pos];
-        if first.path.is_file() {
+        if first.path.components().count() == depth + 1 {
             // Handle blob
             children.push(TreeEntry {
                 mode: first.mode,
-                path: first.path.clone(),
+                name: first.path.file_name().expect("Unnamed file").to_string_lossy().to_string(),
                 hash: first.hash
             });
             pos += 1;
@@ -57,8 +57,8 @@ fn write_subtree(depth: usize, index: &[IndexItem], repo_root: &PathBuf, global_
             
             let subtree = write_subtree(depth + 1, subtree_items, repo_root, global_opts)?;
             children.push(TreeEntry {
-                mode: 40000,
-                path: subtree_path.clone(),
+                mode: 0o40000,
+                name: subtree_path.file_name().expect("Error writing tree").to_string_lossy().to_string(),
                 hash: subtree.hash()
             });
             

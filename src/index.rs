@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use sha1::{Sha1, Digest};
 
+#[derive(Debug)]
 pub struct Index {
     pub version: u32,
 
@@ -10,7 +11,7 @@ pub struct Index {
     pub items: Vec<IndexItem>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IndexItem {
     pub ctime: u32,
     pub ctime_nsec: u32,

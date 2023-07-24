@@ -51,7 +51,7 @@ fn checkout_tree(root: &PathBuf, tree: Tree, destination: &PathBuf, git_mode: bo
         println!("Checking out following tree node...");
         // println!("{}", leaf);
 
-        let output_path = destination.join(&leaf.path);
+        let output_path = destination.join(&leaf.name);
 
         match get_object(root, &leaf.hash, git_mode) {
             Ok(Object::Blob(b)) => { fs::write(output_path, b.bytes)?; },

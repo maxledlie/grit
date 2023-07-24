@@ -118,8 +118,8 @@ pub struct Tree {
 pub struct TreeEntry {
     /// The unix file mode
     pub mode: u32,
-    /// The path to the file
-    pub path: PathBuf,
+    /// The name of the file or directory
+    pub name: String,
     /// The SHA1 hash of the file contents
     pub hash: [u8; 20]
 }
@@ -134,12 +134,12 @@ impl GitObject for Tree {
             // Convert mode from integer to an ASCII representation of the octal value
             let mode_str = format!("{:o}", child.mode);
             let mut mode = mode_str.as_bytes().to_vec();
-            let mut path = child.path.as_os_str().as_bytes().to_vec();
+            let mut name = child.name.as_bytes().to_vec();
             let mut hash = child.hash.to_vec();
 
             bytes.append(&mut mode);
             bytes.push(b' ');
-            bytes.append(&mut path);
+            bytes.append(&mut name);
             bytes.push(b'\0');
             bytes.append(&mut hash);
         }
@@ -405,14 +405,13 @@ fn parse_tree_node(bytes: &[u8], pos: &mut usize) -> Result<TreeEntry> {
         .map_err(|_| anyhow!( 
             "error parsing tree: non-UTF8 character in path"
         ))?;
-    let path = PathBuf::from(path_str);
     let hash: [u8; 20] = remainder[path_end+1..path_end+21].try_into().expect("array of incorrect length");
 
     *pos += path_end + 21;
 
     Ok(TreeEntry {
         mode,
-        path,
+        name: path_str,
         hash
     })
 }
