@@ -58,13 +58,20 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
         // Find position to insert this item in that will preserve ordering by path name
         let new_path_str = item.path.to_string_lossy();
         let new_path_bytes = new_path_str.as_bytes();
+
+        let mut inserted = false;
         for i in 0..index.items.len() {
             let current_path_str = index.items[i].path.to_string_lossy();
             let current_path_bytes = current_path_str.as_bytes();
             if mem_cmp(new_path_bytes, current_path_bytes) > 0 {
                 index.items.insert(i, item.clone());
+                inserted = true;
                 break;
             }
+        }
+
+        if !inserted {
+            index.items.push(item.clone());
         }
     } else {
         index = Index {
