@@ -1,9 +1,9 @@
-use std::{env, fs};
+use std::{env, fs, path::PathBuf};
 
 use anyhow::Result;
 use clap::Args;
 
-use crate::{GlobalOpts, repo_find, git_dir_name, index::Index, cmd_status, StatusArgs};
+use crate::{GlobalOpts, repo_find, git_dir_name, index::Index, cmd_status, StatusArgs, write_tree::write_tree, objects::Commit};
 
 
 #[derive(Args)]
@@ -18,21 +18,15 @@ pub fn cmd_commit(args: CommitArgs, global_opts: GlobalOpts) -> Result<()> {
         panic!("fatal: not a grit repository");
     });
 
-    let mut staged = Vec::new();
-    let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
-    if index_path.exists() {
-        let index_bytes = fs::read(index_path)?;
-        let index = Index::deserialize(index_bytes)?;
-        for item in &index.items {
-            staged.push(item.path.to_string_lossy().to_string());
-        }
-    }
+    let index = read_index(&root, global_opts)?;
 
     // If nothing is staged, run `status` instead to prompt the user to `add` files
-    if staged.len() == 0 {
+    if index.items.len() == 0 {
         let status_args = StatusArgs { };
         return cmd_status(status_args, global_opts);
     }
+
+    let tree = write_tree(index, &root, global_opts)?;
 
     let branch = "master"; // TODO
     let parent = "root-commit"; // TODO
@@ -43,4 +37,15 @@ pub fn cmd_commit(args: CommitArgs, global_opts: GlobalOpts) -> Result<()> {
     // Print summary of changes
 
     Ok(())
+}
+
+// Returns the current index, or an empty index if one does not exist
+fn read_index(repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<Index> {
+    let index_path = repo_root.join(format!("{}/index", git_dir_name(global_opts)));
+    if index_path.exists() {
+        let index_bytes = fs::read(index_path)?;
+        return Index::deserialize(index_bytes);
+    } else {
+        return Ok(Index { version: 2, items: Vec::new() });
+    }
 }

@@ -20,14 +20,12 @@ pub fn cmd_write_tree(global_opts: GlobalOpts) -> Result<()> {
 }
 
 
+/// Creates a tree object using the current index. The name of the new tree object is printed to standard output.
+/// The index must be in a fully merged state.
+/// Conceptually, git write-tree syncs the current index contents into a set of tree files.
+/// In order to have that match what is actually in your directory right now, you need to have done a git update-index
+/// phase before you did the git write-tree.
 pub fn write_tree(index: Index, repo_root: &PathBuf, global_opts: GlobalOpts) -> Result<Tree> {
-    /*
-    Creates a tree object using the current index. The name of the new tree object is printed to standard output.
-    The index must be in a fully merged state.
-    Conceptually, git write-tree syncs the current index contents into a set of tree files.
-    In order to have that match what is actually in your directory right now, you need to have done a git update-index
-    phase before you did the git write-tree.
-    */
     write_subtree(0, &index.items, repo_root, global_opts)
 }
 
