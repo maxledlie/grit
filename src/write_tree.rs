@@ -1,6 +1,6 @@
-use std::{env, fs, path::{PathBuf, Path}};
+use std::{env, fs, path::PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use crate::{GlobalOpts, index::{Index, IndexItem}, objects::{GitObject, Tree, TreeEntry}, repo_find, git_dir_name};
 
 

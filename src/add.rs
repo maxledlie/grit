@@ -55,6 +55,9 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
         let index_bytes = fs::read(root.join(".git/index"))?;
         index = Index::deserialize(index_bytes)?;
 
+        // Remove any existing entry for this path
+        index.items.retain(|x| x.path != item.path);
+
         // Find position to insert this item in that will preserve ordering by path name
         let new_path_str = item.path.to_string_lossy();
         let new_path_bytes = new_path_str.as_bytes();

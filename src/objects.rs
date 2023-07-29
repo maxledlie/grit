@@ -1,4 +1,4 @@
-use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt, os::unix::prelude::OsStrExt};
+use std::{path::PathBuf, fs::{self, File}, io::{Write, Read}, collections::HashMap, fmt};
 use anyhow::{anyhow, bail, Result};
 use flate2::{bufread::ZlibDecoder, write::ZlibEncoder, Compression};
 use sha1::{Sha1, Digest};
