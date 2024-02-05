@@ -1,15 +1,24 @@
-use std::{fs, env, path::PathBuf};
-use anyhow::Result;
+use std::{collections::HashSet, env, fs, path::{Path, PathBuf}};
+use anyhow::{Result, anyhow};
 use clap::Args;
 
 use crate::{GlobalOpts, repo_find, index::Index, git_dir_name};
 
+pub enum UntrackedMode {
+    No,
+    Normal,
+    All
+}
 
 #[derive(Args)]
 pub struct StatusArgs {
+    #[arg(short, long)]
+    pub untracked_files: Option<String>
 }
 
-pub fn cmd_status(_args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
+pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
+    let untracked_mode = parse_untracked_mode(&args)?;
+
     let path = env::current_dir().unwrap_or_else(|_| { panic!() });
     let root = repo_find(&path, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a grit repository");
@@ -25,13 +34,19 @@ pub fn cmd_status(_args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
 
     // Currently assuming all files are uncommitted.
     // Once `commit` is implemented, only report files that are not in the HEAD tree
+    // Build a list of tracked directories.
     let mut staged = Vec::new();
+    let mut tracked_dirs = HashSet::<&Path>::new();
+
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     if index_path.exists() {
         let index_bytes = fs::read(index_path)?;
         let index = Index::deserialize(index_bytes)?;
         for item in &index.items {
             staged.push(item.path.to_string_lossy().to_string());
+            if let Some(parent) = item.path.parent() {
+                tracked_dirs.insert(parent);
+            }
         }
     }
 
@@ -92,4 +107,17 @@ fn walk_worktree(path: &PathBuf, git_dir_name: &str) -> Result<Vec<PathBuf>> {
     } 
 
     Ok(ret)
+}
+
+fn parse_untracked_mode(args: &StatusArgs) -> Result<UntrackedMode> {
+    if let Some(u) = &args.untracked_files {
+        match u.as_str() {
+            "no" => Ok(UntrackedMode::No),
+            "normal" => Ok(UntrackedMode::Normal),
+            "all" => Ok(UntrackedMode::All),
+            _ => Err(anyhow!("fatal: Invalid untracked files mode '{}'", u))
+        }
+    } else {
+        Ok(UntrackedMode::Normal)
+    }
 }

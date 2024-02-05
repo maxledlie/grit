@@ -22,7 +22,7 @@ pub fn cmd_commit(args: CommitArgs, global_opts: GlobalOpts) -> Result<()> {
 
     // If nothing is staged, run `status` instead to prompt the user to `add` files
     if index.items.len() == 0 {
-        let status_args = StatusArgs { };
+        let status_args = StatusArgs { untracked_files: None };
         return cmd_status(status_args, global_opts);
     }
 
