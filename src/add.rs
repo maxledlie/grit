@@ -16,19 +16,31 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
     let root = repo_find(&cwd, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a {} repository", git_dir_name(global_opts));
     });
+    let rel_cwd = cwd.strip_prefix(&root).unwrap();
 
-    // For now, we assume the pathspec is the literal name of a single file
+    // For now, we assume the pathspec is a single file
+    // The provided path may be relative or absolute
+    let provided_path = PathBuf::from(args.pathspec);
+
+    // The path written to the index is always relative to the repository root
+    let index_item_path = if provided_path.is_relative() {
+        rel_cwd.join(&provided_path)
+    } else {
+        provided_path.clone()
+    };
+
+    // TODO: What if path is not in repository?
 
     // Hash the object and write it to the store
-    let path = PathBuf::from(args.pathspec);
-    let bytes = fs::read(&path)?;
+    let bytes = fs::read(provided_path)?;
+
     let blob = Blob { bytes };
     blob.write(&root, global_opts)?;
 
     let item: IndexItem;
 
     // Get status information on the file by calling the C standard library
-    let c_path = CString::new(path.to_string_lossy().as_bytes())?;
+    let c_path = CString::new(index_item_path.to_string_lossy().as_bytes())?;
     unsafe {
         let mut stat: libc::stat = mem::zeroed();
         libc::stat(c_path.as_ptr(), &mut stat);
@@ -45,14 +57,14 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
             gid: u32::try_from(stat.st_gid).unwrap(),
             size: u32::try_from(stat.st_size).unwrap(),
             hash: blob.hash(),
-            path
+            path: index_item_path
         }
     }
 
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     let mut index: Index;
     if index_path.exists() {
-        let index_bytes = fs::read(root.join(".git/index"))?;
+        let index_bytes = fs::read(&index_path)?;
         index = Index::deserialize(index_bytes)?;
 
         // Remove any existing entry for this path

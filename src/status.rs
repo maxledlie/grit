@@ -36,34 +36,24 @@ pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
     // Once `commit` is implemented, only report files that are not in the HEAD tree
     // Build a list of tracked directories.
     let mut staged = Vec::new();
-    let mut tracked_dirs = HashSet::<&Path>::new();
+    let mut tracked_dirs = HashSet::<PathBuf>::new();
 
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     if index_path.exists() {
         let index_bytes = fs::read(index_path)?;
         let index = Index::deserialize(index_bytes)?;
-        for item in &index.items {
+        for item in index.items {
             staged.push(item.path.to_string_lossy().to_string());
+
             if let Some(parent) = item.path.parent() {
-                tracked_dirs.insert(parent);
+                if parent.components().count() > 0 {
+                    tracked_dirs.insert(PathBuf::from(parent));
+                }
             }
         }
     }
 
-    // Find untracked files - those in the working directory but
-    // not listed in the index.
-    let mut untracked = Vec::new();
-    let mut untracked_paths: Vec<String> = walk_worktree(&root, &git_dir_name(global_opts))?.iter()
-        .map(|x| x.strip_prefix(&root).unwrap().to_string_lossy().to_string())
-        .collect();
-    untracked_paths.sort();
-
-    for path in untracked_paths {
-        if !staged.iter().any(|x| x == &path) {
-            untracked.push(path);
-        }
-    }
-
+    // Report staged changes
     if staged.len() > 0 {
         println!("Changes to be committed:");
         println!("  (use \"git rm --cached <file>...\" to unstage)");
@@ -73,24 +63,64 @@ pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
         println!();
     }
 
-    if untracked.len() > 0 {
-        println!("Untracked files:");
-        println!("  (use \"git add <file>...\" to include in what will be committed)");
-        for x in &untracked {
-            println!("\t{}", x);
+    if let UntrackedMode::No = untracked_mode {
+        println!("Untracked files not listed (use -u option to show untracked files)");
+        return Ok(());
+    }
+
+    if let UntrackedMode::Normal = untracked_mode {
+        let mut paths = Vec::new();
+        for dir_path in tracked_dirs {
+            let dir = fs::read_dir(dir_path)?;
+            for entry in dir {
+                let entry = entry?;
+                paths.push(entry.path());
+            }
+            
         }
-        println!();
-    }
 
-    if untracked.len() > 0 && staged.len() == 0 {
-        println!("nothing added to commit but untracked files present (use \"git add\" to track)");
+        for path in paths {
+            let path_str = path.into_os_string().into_string();
+            if let Ok(path_str) = path_str {
+                println!("{}", path_str);
+            }
+        }
+        return Ok(());
     }
+    else {
+        // Find untracked files - those in the working directory but
+        // not listed in the index.
+        let mut untracked = Vec::new();
+        let mut untracked_paths: Vec<String> = walk_worktree(&root, &git_dir_name(global_opts))?.iter()
+            .map(|x| x.strip_prefix(&root).unwrap().to_string_lossy().to_string())
+            .collect();
+        untracked_paths.sort();
 
-    if untracked.len() == 0 && staged.len() == 0 {
-        println!("nothing to commit (create/copy files and use \"git add\" to track)");
+        for path in untracked_paths {
+            if !staged.iter().any(|x| x == &path) {
+                untracked.push(path);
+            }
+        }
+
+        if untracked.len() > 0 {
+            println!("Untracked files:");
+            println!("  (use \"git add <file>...\" to include in what will be committed)");
+            for x in &untracked {
+                println!("\t{}", x);
+            }
+            println!();
+        }
+
+        if untracked.len() > 0 && staged.len() == 0 {
+            println!("nothing added to commit but untracked files present (use \"git add\" to track)");
+        }
+
+        if untracked.len() == 0 && staged.len() == 0 {
+            println!("nothing to commit (create/copy files and use \"git add\" to track)");
+        }
+
+        return Ok(())
     }
-
-    Ok(())
 }
 
 fn walk_worktree(path: &PathBuf, git_dir_name: &str) -> Result<Vec<PathBuf>> {
