@@ -1,5 +1,5 @@
 use std::{fs, env, ffi::CString, mem, path::PathBuf};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::{arg, Args};
 
 use crate::{GlobalOpts, index::{Index, IndexItem}, repo_find, git_dir_name, objects::{Blob, GitObject}};
@@ -16,20 +16,11 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
     let root = repo_find(&cwd, global_opts).unwrap_or_else(|| {
         panic!("fatal: not a {} repository", git_dir_name(global_opts));
     });
-    let rel_cwd = cwd.strip_prefix(&root).unwrap();
 
     // For now, we assume the pathspec is a single file
     // The provided path may be relative or absolute
     let provided_path = PathBuf::from(args.pathspec);
-
-    // The path written to the index is always relative to the repository root
-    let index_item_path = if provided_path.is_relative() {
-        rel_cwd.join(&provided_path)
-    } else {
-        provided_path.clone()
-    };
-
-    // TODO: What if path is not in repository?
+    let index_item_path = rebase_path(&provided_path, &root)?;
 
     // Hash the object and write it to the store
     let bytes = fs::read(provided_path)?;
@@ -99,6 +90,18 @@ pub fn cmd_add(args: AddArgs, global_opts: GlobalOpts) -> Result<()> {
     fs::write(index_path, index_bytes)?;
 
     Ok(())
+}
+
+/// Paths may be provided as absolute or relative to the current working directory.
+/// When written to the index, they are stored relative to the repository root.
+/// This fuction returns the path relative to the repository root, if the provided path is within the repository.
+/// Otherwise returns an error.
+fn rebase_path(path: &PathBuf, root: &PathBuf) -> Result<PathBuf> {
+    let path = path.canonicalize().map_err(|_| anyhow!("Invalid path {:?}", path))?;
+    let rel_path = path.strip_prefix(root)
+        .map_err(|_| anyhow!("{:?} is outside repository at {:?}", path, root))?;
+
+    Ok(rel_path.to_path_buf())
 }
 
 // Compares the byte arrays as a string of unsigned bytes. Returns -1 if left is greater, 0 if equal, 1 if right is greater.
