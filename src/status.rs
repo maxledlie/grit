@@ -70,13 +70,19 @@ pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
 
     if let UntrackedMode::Normal = untracked_mode {
         let mut paths = Vec::new();
+
+        // Root directory is always tracked
+        for entry in fs::read_dir(&root)? {
+            let entry = entry?;
+            paths.push(entry.path());
+        }
+
         for dir_path in tracked_dirs {
             let dir = fs::read_dir(dir_path)?;
             for entry in dir {
                 let entry = entry?;
                 paths.push(entry.path());
             }
-            
         }
 
         for path in paths {
