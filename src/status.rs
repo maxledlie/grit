@@ -1,4 +1,4 @@
-use std::{collections::HashSet, env, fs, path::{Path, PathBuf}};
+use std::{collections::HashSet, env, fs::{self, DirEntry, ReadDir}, path::{Path, PathBuf}};
 use anyhow::{Result, anyhow};
 use clap::Args;
 
@@ -34,9 +34,10 @@ pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
 
     // Currently assuming all files are uncommitted.
     // Once `commit` is implemented, only report files that are not in the HEAD tree
-    // Build a list of tracked directories.
+    // Build a list of tracked directories (the root directory is always tracked)
     let mut staged = Vec::new();
     let mut tracked_dirs = HashSet::<PathBuf>::new();
+    tracked_dirs.insert(root.clone());
 
     let index_path = root.join(format!("{}/index", git_dir_name(global_opts)));
     if index_path.exists() {
@@ -68,65 +69,56 @@ pub fn cmd_status(args: StatusArgs, global_opts: GlobalOpts) -> Result<()> {
         return Ok(());
     }
 
+    let mut paths = Vec::<String>::new();
     if let UntrackedMode::Normal = untracked_mode {
-        let mut paths = Vec::new();
-
-        // Root directory is always tracked
-        for entry in fs::read_dir(&root)? {
-            let entry = entry?;
-            paths.push(entry.path());
-        }
-
         for dir_path in tracked_dirs {
             let dir = fs::read_dir(dir_path)?;
             for entry in dir {
-                let entry = entry?;
-                paths.push(entry.path());
+                paths.push(index_name(&entry?.path(), &root));
             }
         }
-
-        for path in paths {
-            let path_str = path.into_os_string().into_string();
-            if let Ok(path_str) = path_str {
-                println!("{}", path_str);
-            }
-        }
-        return Ok(());
     }
     else {
-        // Find untracked files - those in the working directory but
-        // not listed in the index.
-        let mut untracked = Vec::new();
-        let mut untracked_paths: Vec<String> = walk_worktree(&root, &git_dir_name(global_opts))?.iter()
-            .map(|x| x.strip_prefix(&root).unwrap().to_string_lossy().to_string())
+        let mut untracked_paths: Vec<String> = walk_worktree(&root, &git_dir_name(global_opts))?
+            .iter()
+            .map(|x| index_name(&x, &root))
             .collect();
-        untracked_paths.sort();
 
+        untracked_paths.sort();
         for path in untracked_paths {
             if !staged.iter().any(|x| x == &path) {
-                untracked.push(path);
+                paths.push(path);
             }
         }
-
-        if untracked.len() > 0 {
-            println!("Untracked files:");
-            println!("  (use \"git add <file>...\" to include in what will be committed)");
-            for x in &untracked {
-                println!("\t{}", x);
-            }
-            println!();
-        }
-
-        if untracked.len() > 0 && staged.len() == 0 {
-            println!("nothing added to commit but untracked files present (use \"git add\" to track)");
-        }
-
-        if untracked.len() == 0 && staged.len() == 0 {
-            println!("nothing to commit (create/copy files and use \"git add\" to track)");
-        }
-
-        return Ok(())
     }
+
+    if paths.len() > 0 {
+        println!("Untracked files:");
+        println!("  (use \"git add <file>...\" to include in what will be committed)");
+        for x in &paths {
+            println!("\t{}", x);
+        }
+        println!();
+    }
+
+    if paths.len() > 0 && staged.len() == 0 {
+        println!("nothing added to commit but paths files present (use \"git add\" to track)");
+    }
+
+    if paths.len() == 0 && staged.len() == 0 {
+        println!("nothing to commit (create/copy files and use \"git add\" to track)");
+    }
+
+    Ok(())
+}
+
+/// Returns the name of the given path, relative to the given repository root
+fn index_name(entry: &Path, root: &Path) -> String {
+    entry
+        .strip_prefix(root)
+        .unwrap()
+        .to_string_lossy()
+        .to_string()
 }
 
 fn walk_worktree(path: &PathBuf, git_dir_name: &str) -> Result<Vec<PathBuf>> {

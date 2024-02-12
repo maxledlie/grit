@@ -3,9 +3,17 @@
 {
 	"name": "Rust",
     "build": {
-        "dockerfile": "Dockerfile"
+        "dockerfile": "Dockerfile",
     },
     "features": {
         "ghcr.io/devcontainers/features/git:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "mhutchie.git-graph"
+            ]
+        } 
     }
 }
